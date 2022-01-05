@@ -1,0 +1,19 @@
+package http
+version = 0.0.1
+authors = "octeep"
+
+readme = "README.md"
+
+license = "ISC (refer to LICENSE file)"
+brief = "A http client implementation in idris2"
+
+depends = base      >= 0.5.1
+        , contrib   >= 0.5.1
+        , network   >= 0.5.1
+        , sop       >= 0.5.0
+        , elab-util >= 0.5.0
+        , tls       >= 0.0.1
+        , apache-mime-types
+
+opts = "-Wno-shadowing"
+sourcedir = "src"
