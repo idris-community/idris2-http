@@ -2,6 +2,12 @@ module Network.HTTP.Header
 
 import Generics.Derive
 import Utils.Num
+import Data.Nat
+import Control.Monad.Error.Either
+import Control.Monad.Trans
+import Network.HTTP.Mime
+
+import Network.HTTP.Utils
 
 %language ElabReflection
 
@@ -19,6 +25,7 @@ data Header : Type where
 public export
 header_value_type : Header -> Type
 header_value_type ContentLength = Integer
+header_value_type Cookie = List (String, String)
 header_value_type _ = String
 
 export
@@ -44,16 +51,16 @@ header_parse_value : (header : Header) -> (String -> Maybe (header_value_type he
 header_parse_value Host = Just
 header_parse_value ContentType = Just
 header_parse_value Accept = Just
-header_parse_value Cookie = Just
 header_parse_value ContentLength = stringToNat' 10
 header_parse_value (Unknown x) = Just
+header_parse_value Cookie = Just . map (splitBy '=' . ltrim) . forget . split (';' ==)
 
 export
 header_write_value : (header : Header) -> (header_value_type header -> String)
 header_write_value Host = id
 header_write_value ContentType = id
 header_write_value Accept = id
-header_write_value Cookie = id
+header_write_value Cookie = join "; " . map (\(a,b) => "\{a}=\{b}")
 header_write_value ContentLength = show
 header_write_value (Unknown x) = id
 
@@ -64,3 +71,13 @@ Show (DPair Header $ \h => header_value_type h) where
 public export
 Headers : Type
 Headers = List (DPair Header $ \h => header_value_type h)
+
+export
+eq_ignore_case : String -> String -> Bool
+eq_ignore_case a b = toUpper a == toUpper b
+
+export
+lookup_header : List (String, String) -> (header : Header) -> Maybe (header_value_type header)
+lookup_header headers header = do
+  raw_value <- lookupBy eq_ignore_case (header_key_name header) headers
+  header_parse_value header raw_value
