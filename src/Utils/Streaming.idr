@@ -32,7 +32,6 @@ import Control.Monad.Trans
 
 infixl 0 :>
 
-||| A pair with its second argument being lazy, heavily using in `Extra.Streaming`
 public export
 data Of : (a : Type) -> (b : Type) -> Type where
   (:>) : a -> Lazy b -> Of a b
@@ -177,24 +176,3 @@ mapf f stream =
 export
 maps : Functor m => (a -> b) -> Stream (Of a) m r -> Stream (Of b) m r
 maps f = mapf (mapFst f)
-
-{-
---- interesting streams
-
-||| Construct a `Stream` reading from a File
-export
-fromFile : HasIO m => File -> Stream (Of Bits8) m (Either FileError ())
-fromFile file = do
-  Right a <- liftIO $ fGetChar file
-    | Left err => pure (Left err)
-  eof <- liftIO $ fEOF file
-  if eof then pure (Right ()) else yield (cast $ ord a) *> fromFile file
-
-||| Write to a `File` from a `Stream`
-export
-toFile : HasIO m => File -> Stream (Of Bits8) m r -> m (Either FileError r)
-toFile file = build (pure . Right) join $ \(a :> b) => do
-  Right () <- fputc a file
-    | Left err => pure (Left err)
-  b
--}
