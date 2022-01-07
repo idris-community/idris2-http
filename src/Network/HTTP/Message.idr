@@ -33,6 +33,7 @@ record RawHttpResponse where
 %runElab derive "RawHttpMessage" [Generic, Meta, Show]
 %runElab derive "RawHttpResponse" [Generic, Meta, Show]
 
+export
 serialize_http_message : RawHttpMessage -> String
 serialize_http_message message =
   join "\r\n"
@@ -40,6 +41,7 @@ serialize_http_message message =
   <+> map (\(k,v) => "\{k}: \{v}") message.headers
   <+> [ "", "" ]
 
+export
 serialize_http_response : RawHttpResponse -> String
 serialize_http_response response =
   join "\r\n"

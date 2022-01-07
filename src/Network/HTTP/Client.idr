@@ -2,6 +2,7 @@ module Network.HTTP.Client
 
 import Utils.Handle
 import Utils.Bytes
+import Utils.Misc
 import Utils.Handle.C
 import Control.Linear.LIO
 import Network.Socket
@@ -9,6 +10,11 @@ import Data.String
 import Data.String.Extra
 import Network.HTTP.Message
 import Network.HTTP.Header
+import Data.Nat
+import Data.Vect
+import System.Future
+import System
+import Data.Fin
 
 %hide Network.Socket.close
 
@@ -51,7 +57,6 @@ read_until_empty_line' acc handle = do
 read_until_empty_line : LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ OkOrError t_ok t_closed
 read_until_empty_line = read_until_empty_line' ""
 
-export
 send_and_recv_http_body : LinearIO m => List Bits8 -> (1 _ : Handle' t_ok t_closed) -> L1 m $ Res Bool $ \ok =>
                           if ok then Res (Nat, RawHttpResponse) (const $ Handle' t_ok t_closed) else Res String (const t_closed)
 send_and_recv_http_body body handle = do
@@ -73,10 +78,36 @@ send_and_recv_http_body body handle = do
 
   pure1 (True # ((integerToNat content_length, response) # handle))
 
+record Channel (leftover : Maybe Nat) (n_upcoming : Nat) t_ok t_closed where
+  constructor MkChannel
+  1 handle : Handle' t_ok t_closed
+
+initialize : (1 _ : Handle' t_ok t_closed) -> Channel Nothing Z t_ok t_closed
+initialize = MkChannel
+
+send : LinearIO m => Channel c k t_ok t_closed -> RawHttpMessage -> List Bits8 -> m (Channel c (S k) t_ok t_closed)
+send channel message body =  ?aweawe
+
+read_begin : Channel Nothing (S k) t_ok t_closed -> (Headers, (len ** Channel (Just len) k t_ok t_closed))
+
+read_body : (demand : Nat) -> {auto 0 prf : LTE demand left}
+  -> Channel (Just left) k t_ok t_closed
+  -> (Vect demand Bits8, Channel (Just (ok_minus left demand prf)) k t_ok t_closed)
+
+read_done : Channel (Just Z) k t_ok t_closed -> Channel Nothing k t_ok t_closed
+read_done = ?for_typing_purposes
+
+read_all : {len : _} -> Channel (Just len) k t_ok t_closed -> (Vect len Bits8, Channel Nothing k t_ok t_closed)
+
+get : Channel Nothing (S k) t_ok t_closed -> (Headers, List Bits8, Channel Nothing k t_ok t_closed)
+
+one_shot : Channel Nothing 0 t_ok t_closed -> RawHttpMessage -> (Headers, List Bits8, Channel Nothing 0 t_ok t_closed)
+
 test_http_body : String -> List Bits8
 test_http_body hostname =
   string_to_ascii
   $ join "\r\n"
+  $ the (List String)
   [ "GET / HTTP/1.1"
   , "Host: " <+> hostname
   , "Connection: keep-alive"
@@ -91,6 +122,7 @@ test_http_body2 : String -> List Bits8
 test_http_body2 hostname =
   string_to_ascii
   $ join "\r\n"
+  $ the (List String)
   [ "GET /70.html HTTP/1.1"
   , "Host: " <+> hostname
   , "Connection: keep-alive"
@@ -134,3 +166,11 @@ test target_hostname port = do
 
     close handle
     putStrLn "ok"
+
+export
+test_future : IO ()
+test_future = do
+  let vect = the (Vect 5 Int) $ map (cast . finToInteger) Fin.range
+  threads <- traverse (\x => forkIO (sleep x *> putStrLn "\{show x}" $> x)) vect
+  putStrLn $ show $ map await threads
+  putStrLn "done"
