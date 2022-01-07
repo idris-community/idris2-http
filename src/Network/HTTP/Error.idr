@@ -4,3 +4,5 @@ public export
 data HttpError : Type where
   ||| When the Host header is absent
   UnknownHost : HttpError
+  ConnectionClosed : HttpError
+  SocketError : String -> HttpError
