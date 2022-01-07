@@ -2,6 +2,7 @@ module Network.HTTP.URL
 
 import Data.String.Parser
 import Generics.Derive
+import Network.HTTP.Protocol
 
 %language ElabReflection
 
