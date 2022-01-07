@@ -121,7 +121,6 @@ export
 inspect : (Functor f, Monad m) => Stream f m r -> m (Either r (f (Stream f m r)))
 inspect = fold (pure . (Right . map (effect {f} {m} . map (either pure wrap)))) join (pure . Left)
 
-
 ||| Turns a `Stream` into 
 export
 toList : Monad m => Stream (Of a) m r -> m (List a, r)

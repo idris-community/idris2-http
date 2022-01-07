@@ -3,9 +3,11 @@ module Network.HTTP.Header
 import Generics.Derive
 import Utils.Num
 import Data.Nat
+import Data.Either
 import Control.Monad.Error.Either
 import Control.Monad.Trans
 import Network.HTTP.Mime
+import Network.HTTP.URL
 
 import Network.HTTP.Utils
 
@@ -26,6 +28,7 @@ public export
 header_value_type : Header -> Type
 header_value_type ContentLength = Integer
 header_value_type Cookie = List (String, String)
+header_value_type Host = Hostname
 header_value_type _ = String
 
 export
@@ -48,7 +51,7 @@ key_name_to_header x =
 
 export
 header_parse_value : (header : Header) -> (String -> Maybe (header_value_type header))
-header_parse_value Host = Just
+header_parse_value Host = getRight . parse_hostname
 header_parse_value ContentType = Just
 header_parse_value Accept = Just
 header_parse_value ContentLength = stringToNat' 10
@@ -57,7 +60,7 @@ header_parse_value Cookie = Just . map (splitBy '=' . ltrim) . forget . split ('
 
 export
 header_write_value : (header : Header) -> (header_value_type header -> String)
-header_write_value Host = id
+header_write_value Host = hostname_string
 header_write_value ContentType = id
 header_write_value Accept = id
 header_write_value Cookie = join "; " . map (\(a,b) => "\{a}=\{b}")
