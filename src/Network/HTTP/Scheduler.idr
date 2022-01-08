@@ -10,7 +10,7 @@ public export
 record ScheduleResponse (e : Type) (m : Type -> Type) where
   constructor MkScheduleResponse
   raw_http_response : RawHttpResponse
-  content : Channel (Either (Either HttpError e) (List Bits8))
+  content : Channel (Either (Either HttpError e) (Maybe (List Bits8)))
 
 public export
 record ScheduleRequest (e : Type) (m : Type -> Type) where
@@ -26,10 +26,11 @@ interface Scheduler (e : Type) (m : Type -> Type) (0 a : Type) where
   ||| Evict all HTTP connections, returning scheduler to a clean state (and closing all resources)
   evict_all : a -> m ()
 
-channel_to_stream : HasIO m => Channel (Either (Either HttpError e) (List Bits8)) ->
+channel_to_stream : HasIO m => Channel (Either (Either HttpError e) (Maybe (List Bits8))) ->
                     Stream (Of Bits8) m (Either (Either HttpError e) ())
 channel_to_stream channel = do
-  Right content <- liftIO $ channelGet channel
+  Right (Just content) <- liftIO $ channelGet channel
+  | Right Nothing => pure (Right ())
   | Left err => pure (Left err)
   fromList_ content *> channel_to_stream channel
 

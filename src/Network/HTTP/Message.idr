@@ -83,7 +83,8 @@ deserialize_http_message = map fst . parse http_message_praser
 export
 http_message_response : Parser RawHttpResponse
 http_message_response = do
-  _ <- string "HTTP/1.1 "
+  _ <- many eol
+  _ <- string "HTTP/1.1 " <|> string "HTTP/1.0 "
   status_code <- natural
   _ <- char ' '
   status_name <- takeWhile1 (not . is_eol)
