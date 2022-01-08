@@ -6,6 +6,6 @@ data HttpError : Type where
   UnknownHost : HttpError
   ConnectionClosed : HttpError
   SocketError : String -> HttpError
-  MissingContentLength : HttpError
   ContentLengthMismatch : (still_want : Integer) -> HttpError
   MissingHeader : String -> HttpError
+  UnknownTransferEncoding : String -> HttpError
