@@ -10,6 +10,7 @@ import Network.HTTP.Pool.Worker
 import Network.HTTP.Pool.Common
 import Network.TLS
 import Network.TLS.Signature
+import Network.TLS.Verify
 import Network.Socket
 import Data.IORef
 import Data.Bits
@@ -36,7 +37,7 @@ mutual
     pools : IORef (List (Hostname, Pool e))
     max_per_site_connections : Nat
     max_total_connections : Nat
-    certificate_checker : CertificateCheck IO
+    certificate_checker : (String -> CertificateCheck IO)
 
   record Worker (e : Type) where
     constructor MkWorker
@@ -46,6 +47,17 @@ mutual
     ||| Kept in case we need to close externally
     socket : Socket
     parent : Pool e
+
+export
+new_pool_manager' : HasIO io => Nat -> Nat -> (String -> CertificateCheck IO) -> io (PoolManager e)
+new_pool_manager' max_per_site_connections max_total_connections cert_check = liftIO $ do
+  ref <- newIORef []
+  pure (MkPoolManager ref max_per_site_connections max_total_connections cert_check)
+
+export
+new_pool_manager : HasIO io => Bool -> io (PoolManager e)
+-- cert check later
+new_pool_manager _ = new_pool_manager' 5 25 (certificate_ignore_check) 
 
 pool_new_worker_id : Pool e -> IO Bits64
 pool_new_worker_id pool = do
@@ -128,7 +140,7 @@ should_spawn_worker protocol manager pool = do
 
 %unhide Control.Linear.LIO.(>>=)
 
-spawn_worker : {e : _} -> Fetcher e -> (HttpError -> IO ()) -> CertificateCheck IO -> Protocol -> Hostname -> Pool e -> IO ()
+spawn_worker : {e : _} -> Fetcher e -> (HttpError -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> Hostname -> Pool e -> IO ()
 spawn_worker fetcher throw cert_check protocol hostname pool = do
   worker_id <- pool_new_worker_id pool
   Right sock <- socket AF_INET Stream 0
