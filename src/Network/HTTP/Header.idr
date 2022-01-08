@@ -20,15 +20,24 @@ data Header : Type where
   Accept : Header
   Cookie : Header
   ContentLength : Header
+  Connection : Header
   Unknown : String -> Header
 
 %runElab derive "Header" [Generic, Meta, Eq, DecEq, Ord, Show]
+
+public export
+data ConnectionAction : Type where
+  KeepAlive : ConnectionAction
+  Close : ConnectionAction
+
+%runElab derive "ConnectionAction" [Generic, Meta, Eq, DecEq, Ord, Show]
 
 public export
 header_value_type : Header -> Type
 header_value_type ContentLength = Integer
 header_value_type Cookie = List (String, String)
 header_value_type Host = Hostname
+header_value_type Connection = ConnectionAction
 header_value_type _ = String
 
 export
@@ -47,6 +56,7 @@ key_name_to_header x =
     "accept" => Accept
     "cookie" => Cookie
     "content-length" => ContentLength
+    "connection" => Connection
     x => Unknown x
 
 export
@@ -57,6 +67,7 @@ header_parse_value Accept = Just
 header_parse_value ContentLength = stringToNat' 10
 header_parse_value (Unknown x) = Just
 header_parse_value Cookie = Just . map (splitBy '=' . ltrim) . forget . split (';' ==)
+header_parse_value Connection = (\case "keep-alive" => Just KeepAlive; "close" => Just Close; _ => Nothing) . toLower . trim
 
 export
 header_write_value : (header : Header) -> (header_value_type header -> String)
@@ -66,6 +77,7 @@ header_write_value Accept = id
 header_write_value Cookie = join "; " . map (\(a,b) => "\{a}=\{b}")
 header_write_value ContentLength = show
 header_write_value (Unknown x) = id
+header_write_value Connection = \case KeepAlive => "keep-alive"; Close => "close"
 
 export
 Show (DPair Header $ \h => header_value_type h) where
