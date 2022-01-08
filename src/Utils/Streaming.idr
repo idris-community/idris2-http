@@ -27,7 +27,8 @@
 ||| - https://hackage.haskell.org/package/streaming
 module Utils.Streaming
 
-import System.File
+import Data.Nat
+import Data.List
 import Control.Monad.Trans
 
 infixl 0 :>
@@ -175,3 +176,30 @@ mapf f stream =
 export
 maps : Functor m => (a -> b) -> Stream (Of a) m r -> Stream (Of b) m r
 maps f = mapf (mapFst f)
+
+
+||| Unconcatenate an element from a `Stream`
+export
+next : Monad m => Stream (Of a) m r -> m (Either r (a, Stream (Of a) m r))
+next (Return r)         = pure (Left r)
+next (Effect m)         = m >>= next
+next (Step (a :> rest)) = pure (Right (a,rest))
+
+||| Take first n elements from a `Stream` and put them in a list
+export
+takeStream : Monad m => Nat -> Stream (Of a) m r -> m (List a, Either r (Stream (Of a) m r))
+takeStream n stream = loop [] n stream where
+  loop : List a -> Nat -> Stream (Of a) m r -> m (List a, Either r (Stream (Of a) m r))
+  loop acc Z stream = pure (acc, Right stream)
+  loop acc (S n) stream = do
+    Right (elem, rest) <- next stream
+    | Left r => pure (acc, Left r)
+    loop (snoc acc elem) n rest
+
+||| Split the stream into stream of sublist of length at most n
+export
+chunksOf : Monad m => (n : Nat) -> {auto 0 ok : NonZero n} -> Stream (Of a) m r -> Stream (Of (List a)) m r
+chunksOf n stream = do
+  (chunk, Right rest) <- lift $ takeStream n stream
+  | (chunk, Left r) => yield chunk *> pure r
+  yield chunk *> chunksOf n rest
