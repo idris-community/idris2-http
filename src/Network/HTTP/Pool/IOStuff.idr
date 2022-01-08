@@ -1,4 +1,4 @@
-module Network.HTTP.Client
+module Network.HTTP.Pool.IOStuff
 
 import Utils.Handle
 import Utils.Bytes
@@ -18,9 +18,11 @@ import Data.Fin
 
 %hide Network.Socket.close
 
+public export
 OkOrError : Type -> Type -> Type
 OkOrError t_ok t_closed = Res Bool $ \ok => if ok then Res String (const $ Handle' t_ok t_closed) else Res String (const t_closed)
 
+public export
 read_line' : LinearIO m =>
              List Char ->
              (1 _ : Handle' t_ok t_closed) ->
@@ -45,18 +47,22 @@ read_line' acc handle = do
       pure1 (True # ((pack $ reverse acc) # handle))
     x => read_line' (x :: acc) handle
 
+public export
 read_line : LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ OkOrError t_ok t_closed
 read_line = read_line' []
 
+public export
 read_until_empty_line' : String -> LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ OkOrError t_ok t_closed
 read_until_empty_line' acc handle = do
   (True # (line # handle)) <- read_line handle
   | (False # (error # handle)) => pure1 (False # ("read line failed: \{error}" # handle))
   if null line then pure1 (True # (acc # handle)) else read_until_empty_line' (acc <+> "\n" <+> line) handle
 
+public export
 read_until_empty_line : LinearIO m => (1 _ : Handle' t_ok t_closed) -> L1 m $ OkOrError t_ok t_closed
 read_until_empty_line = read_until_empty_line' ""
 
+public export
 send_and_recv_http_body : LinearIO m => List Bits8 -> (1 _ : Handle' t_ok t_closed) -> L1 m $ Res Bool $ \ok =>
                           if ok then Res (Nat, RawHttpResponse) (const $ Handle' t_ok t_closed) else Res String (const t_closed)
 send_and_recv_http_body body handle = do
@@ -77,31 +83,6 @@ send_and_recv_http_body body handle = do
     pure1 (False # ("error: cannot find Content-Length" # handle'))
 
   pure1 (True # ((integerToNat content_length, response) # handle))
-
-record Channel (leftover : Maybe Nat) (n_upcoming : Nat) t_ok t_closed where
-  constructor MkChannel
-  1 handle : Handle' t_ok t_closed
-
-initialize : (1 _ : Handle' t_ok t_closed) -> Channel Nothing Z t_ok t_closed
-initialize = MkChannel
-
-send : LinearIO m => Channel c k t_ok t_closed -> RawHttpMessage -> List Bits8 -> m (Channel c (S k) t_ok t_closed)
-send channel message body =  ?aweawe
-
-read_begin : Channel Nothing (S k) t_ok t_closed -> (Headers, (len ** Channel (Just len) k t_ok t_closed))
-
-read_body : (demand : Nat) -> {auto 0 prf : LTE demand left}
-  -> Channel (Just left) k t_ok t_closed
-  -> (Vect demand Bits8, Channel (Just (ok_minus left demand prf)) k t_ok t_closed)
-
-read_done : Channel (Just Z) k t_ok t_closed -> Channel Nothing k t_ok t_closed
-read_done = ?for_typing_purposes
-
-read_all : {len : _} -> Channel (Just len) k t_ok t_closed -> (Vect len Bits8, Channel Nothing k t_ok t_closed)
-
-get : Channel Nothing (S k) t_ok t_closed -> (Headers, List Bits8, Channel Nothing k t_ok t_closed)
-
-one_shot : Channel Nothing 0 t_ok t_closed -> RawHttpMessage -> (Headers, List Bits8, Channel Nothing 0 t_ok t_closed)
 
 test_http_body : String -> List Bits8
 test_http_body hostname =

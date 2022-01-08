@@ -7,17 +7,17 @@ import Utils.Streaming
 import System.Concurrency
 
 public export
-record ScheduleResponse (m : Type -> Type) where
+record ScheduleResponse (e : Type) (m : Type -> Type) where
   constructor MkScheduleResponse
   raw_http_response : RawHttpResponse
-  content : Channel (Either HttpError (List Bits8))
+  content : Channel (Either (Either HttpError e) (List Bits8))
 
 public export
 record ScheduleRequest (e : Type) (m : Type -> Type) where
   constructor MkScheduleRequest
   raw_http_message : RawHttpMessage
   content : Stream (Of Bits8) m (Either e ())
-  response : Channel (Either (Either HttpError e) (ScheduleResponse m))
+  response : Channel (Either (Either HttpError e) (ScheduleResponse e m))
 
 public export
 interface Scheduler (e : Type) (m : Type -> Type) (0 a : Type) where
@@ -26,10 +26,11 @@ interface Scheduler (e : Type) (m : Type -> Type) (0 a : Type) where
   ||| Evict all HTTP connections, returning scheduler to a clean state (and closing all resources)
   evict_all : a -> m ()
 
-channel_to_stream : HasIO m => Channel (Either HttpError (List Bits8)) -> Stream (Of Bits8) m (Either (Either HttpError e) ())
+channel_to_stream : HasIO m => Channel (Either (Either HttpError e) (List Bits8)) ->
+                    Stream (Of Bits8) m (Either (Either HttpError e) ())
 channel_to_stream channel = do
   Right content <- liftIO $ channelGet channel
-  | Left err => pure (Left (Left err))
+  | Left err => pure (Left err)
   fromList_ content *> channel_to_stream channel
 
 public export
