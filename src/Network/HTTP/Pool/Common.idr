@@ -4,9 +4,14 @@ import System.Concurrency.BufferedChannel
 import Network.HTTP.Scheduler
 
 public export
-Fetcher : Type -> (Type -> Type) -> Type
-Fetcher e m = (dc : BufferedChannel (ScheduleRequest e m) ** (BlockingReceiver (ScheduleRequest e m)))
+data Event : Type -> Type where
+  Request : ScheduleRequest e IO -> Event e
+  Kill : Event e
 
 public export
-Sender : Type -> (Type -> Type) -> Type
-Sender e m = (dc : BufferedChannel (ScheduleRequest e m) ** (SendEffect -> SenderFunc (ScheduleRequest e m)))
+Fetcher : Type -> Type
+Fetcher e = (dc : BufferedChannel (Event e) ** (BlockingReceiver (Event e)))
+
+public export
+Sender : Type -> Type
+Sender e = (dc : BufferedChannel (Event e) ** (SendEffect -> SenderFunc (Event e)))

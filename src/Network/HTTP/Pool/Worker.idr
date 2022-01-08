@@ -166,15 +166,18 @@ worker_logic request handle = do
       | (False # handle) => pure1 (False # handle)
       worker_finish connection_action handle
 
-worker_loop : {e : _} -> IO () -> Fetcher e IO -> (1 _ : Handle' t_ok ()) -> L IO ()
+worker_loop : {e : _} -> IO () -> Fetcher e -> (1 _ : Handle' t_ok ()) -> L IO ()
 worker_loop closer (channel ** receiver) handle = do
-  request <- liftIO1 $ receiver channel
+  Request request <- liftIO1 $ receiver channel
+  | Kill => do
+    close handle
+    liftIO1 closer
   (True # handle) <- worker_logic request handle
   | (False # ()) => liftIO1 closer
   worker_loop closer (channel ** receiver) handle
 
 export
-worker_handle : {e : _} -> Socket -> IO () -> Fetcher e IO -> (HttpError -> IO ()) -> CertificateCheck IO -> Protocol -> String -> L IO ()
+worker_handle : {e : _} -> Socket -> IO () -> Fetcher e -> (HttpError -> IO ()) -> CertificateCheck IO -> Protocol -> String -> L IO ()
 worker_handle socket closer fetcher throw cert_checker protocol hostname = do
   let handle = socket_to_handle socket
   case protocol of

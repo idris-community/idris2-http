@@ -26,9 +26,9 @@ mutual
     workers : IORef (List (Worker e))
     ||| Increase everytime there is a new worker
     counter : IORef Bits32
-    scheduled : IORef (BufferedChannel (ScheduleRequest e IO))
-    sender : Sender e IO
-    fetcher : Fetcher e IO
+    scheduled : IORef (BufferedChannel (Event e))
+    sender : Sender e
+    fetcher : Fetcher e
 
   export
   record PoolManager (e : Type) where
@@ -92,23 +92,31 @@ close_worker worker = do
   let f = \w => w.uuid == worker.uuid
   modifyIORef worker.parent.workers (filter f)
 
-close_pool : Pool e -> IO ()
+close_pool : {e : _} -> Pool e -> IO ()
 close_pool pool = do
   buffer_reader <- becomeReceiver NonBlocking pool.scheduled
   remaining <- get_all_remaining_requests buffer_reader 0 []
+  -- feed all awaiting requests with errors
   traverse_ (flip channelPut (Left $ Left ConnectionClosed) . response) remaining
+
+  -- close all sockets
   workers <- readIORef pool.workers
   traverse_ close_worker workers
+
+  -- spam kill events
+  let kills = List.replicate (2 * length workers) (the (Event e) Kill)
+  let (bc ** buffer) = pool.sender
+  traverse_ {t=List} (buffer Signal bc) kills
   where
-    get_all_remaining_requests : (dc : BufferedChannel (ScheduleRequest e io) ** (NonBlockingReceiver (ScheduleRequest e io)))
+    get_all_remaining_requests : (dc : BufferedChannel (Event e) ** (NonBlockingReceiver (Event e)))
                                   -> Integer
-                                  -> List (ScheduleRequest e io)
-                                  -> IO (List (ScheduleRequest e io))
+                                  -> List (ScheduleRequest e IO)
+                                  -> IO (List (ScheduleRequest e IO))
     get_all_remaining_requests (channel ** recv) tries acc =
       -- Try extra 5 times just in case
       if tries >= 5 then pure acc else do
-        Just x <- recv channel
-        | Nothing => get_all_remaining_requests (channel ** recv) (tries + 1) acc
+        Just (Request x) <- recv channel
+        | _ => get_all_remaining_requests (channel ** recv) (tries + 1) acc
         get_all_remaining_requests (channel ** recv) 0 (x :: acc)
 
 should_spawn_worker : Protocol -> PoolManager e -> Pool e -> IO Bool
@@ -120,7 +128,7 @@ should_spawn_worker protocol manager pool = do
 
 %unhide Control.Linear.LIO.(>>=)
 
-spawn_worker : Fetcher e IO -> (HttpError -> IO ()) -> CertificateCheck IO -> Protocol -> Hostname -> Pool e -> IO ()
+spawn_worker : {e : _} -> Fetcher e -> (HttpError -> IO ()) -> CertificateCheck IO -> Protocol -> Hostname -> Pool e -> IO ()
 spawn_worker fetcher throw cert_check protocol hostname pool = do
   worker_id <- pool_new_worker_id pool
   Right sock <- socket AF_INET Stream 0
@@ -142,7 +150,7 @@ export
     Right (host, pool) <- find_or_create_pool request.raw_http_message manager
     | Left err => throw err
     let (bc ** buffer) = pool.sender
-    buffer Signal bc request
+    buffer Signal bc $ Request request
     True <- should_spawn_worker protocol manager pool
     | False => pure ()
     spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
