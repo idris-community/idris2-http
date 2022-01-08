@@ -16,8 +16,10 @@ import Utils.Handle.C
 import Utils.Handle
 import Utils.Bytes
 import Utils.Streaming
+import Utils.Num
 import Data.List1
 import Data.Nat
+import Data.Fin
 import Data.String
 import System.Concurrency
 import System.Concurrency.BufferedChannel
@@ -55,11 +57,63 @@ worker_finish _ handle = do
   handle <- close handle
   pure1 (False # handle)
 
-worker_read_fixed_length : (1 _ : Handle' t_ok t_closed) -> Integer -> Integer -> (Channel (Either (Either HttpError e) (List Bits8))) ->
-                           L IO (Res Bool $ \ok => if ok then Handle' t_ok t_closed else t_closed)
+worker_read_fixed_length : (1 _ : Handle' t_ok t_closed) -> Integer -> Integer -> Channel (Either (Either HttpError e) (List Bits8)) ->
+                           L1 IO (LogicOkOrError t_ok t_closed)
+worker_read_fixed_length handle remaining chunk_size channel = if remaining <= 0 then pure1 (True # handle) else do
+  let should_read = min remaining chunk_size
+  (True # (content # handle)) <- read handle (integerToNat should_read)
+  | (False # (error # handle)) => do
+    liftIO1 $ channelPut channel (Left $ Left $ SocketError "error while reading response: \{error}")
+    pure1 (False # handle)
+  liftIO1 $ channelPut channel (Right content)
+  worker_read_fixed_length handle (remaining - should_read) chunk_size channel
 
-worker_read_chunked : (1 _ : Handle' t_ok t_closed) -> (Channel (Either (Either HttpError e) (List Bits8))) ->
-                      L IO (Res Bool $ \ok => if ok then Handle' t_ok t_closed else t_closed)
+worker_read_chunked : (1 _ : Handle' t_ok t_closed) -> Channel (Either (Either HttpError e) (List Bits8)) ->
+                      L1 IO (LogicOkOrError t_ok t_closed)
+worker_read_chunked handle channel = do
+  (True # (length_line # handle)) <- read_line handle
+  | (False # (error # handle)) => do
+    liftIO1 $ channelPut channel (Left $ Left $ SocketError "error while reading response: \{error}")
+    pure1 (False # handle)
+  let Just length_line = stringToNat 16 $ toLower length_line
+  | Nothing => do
+    handle <- close handle
+    liftIO1 $ channelPut channel (Left $ Left $ SocketError "invalid chunked header: \{length_line}")
+    pure1 (False # handle)
+  (True # (content # handle)) <- read handle length_line
+  | (False # (error # handle)) => do
+    liftIO1 $ channelPut channel (Left $ Left $ SocketError "error while reading chunked body: \{error}")
+    pure1 (False # handle)
+
+  (True # ([char] # handle)) <- read handle 1
+  | (True # (char # handle)) => do
+    handle' <- close handle
+    liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed, somehow read returns \{show (length char)} bytes instead of 1")
+    pure1 (False # handle')
+  | (False # (error # handle)) => do
+    liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed: \{error}")
+    pure1 (False # handle)
+  case cast {to=Char} char of
+    '\n' =>
+      pure1 (True # handle)
+    '\r' => do
+      (True # ([10] # handle)) <- read handle 1
+      | (True # ([char] # handle)) => do
+        handle' <- close handle
+        liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed, \\n expected after \\r, got \{show char} instead")
+        pure1 (False # handle')
+      | (True # (char # handle)) => do
+        handle' <- close handle
+        liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed, somehow read returns \{show (length char)} bytes instead of 1")
+        pure1 (False # handle')
+      | (False # (error # handle)) => do
+        liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed: \{error}")
+        pure1 (False # handle)
+      pure1 (True # handle)
+    chr => do
+      handle <- close handle
+      liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body tail failed: got \{show chr} instead of \\n or \\r")
+      pure1 (False # handle)
 
 worker_logic : {e : _} -> ScheduleRequest e IO -> (1 _ : Handle' t_ok t_closed) -> L1 IO (LogicOkOrError t_ok t_closed)
 worker_logic request handle = do
