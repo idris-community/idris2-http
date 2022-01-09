@@ -180,22 +180,26 @@ worker_logic request handle = do
       | (False # handle) => pure1 (False # handle)
       worker_finish connection_action handle
 
-worker_loop : {e : _} -> IO () -> Fetcher e -> (1 _ : Handle' t_ok ()) -> L IO ()
-worker_loop closer (channel ** receiver) handle = do
+worker_loop : {e : _} -> IORef Bool -> IO () -> Fetcher e -> (1 _ : Handle' t_ok ()) -> L IO ()
+worker_loop idle_ref closer (channel ** receiver) handle = do
+  liftIO1 $ writeIORef idle_ref True
   Request request <- liftIO1 $ receiver channel
   | Kill => do
     close handle
     liftIO1 closer
+  liftIO1 $ writeIORef idle_ref False
   (True # handle) <- worker_logic request handle
   | (False # ()) => liftIO1 closer
-  worker_loop closer (channel ** receiver) handle
+  worker_loop idle_ref closer (channel ** receiver) handle
 
 export
-worker_handle : {e : _} -> Socket -> IO () -> Fetcher e -> (HttpError -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> String -> L IO ()
-worker_handle socket closer fetcher throw cert_checker protocol hostname = do
+worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Fetcher e -> (HttpError -> IO ()) ->
+                (String -> CertificateCheck IO) -> Protocol -> String -> IO ()
+worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostname = run $ do
   let handle = socket_to_handle socket
   case protocol of
-    HTTP => worker_loop closer fetcher handle
+    HTTP =>
+      worker_loop idle_ref closer fetcher handle
     HTTPS => do
       (True # handle) <-
         tls_handshake hostname
@@ -205,4 +209,4 @@ worker_handle socket closer fetcher throw cert_checker protocol hostname = do
           handle
           (cert_checker hostname)
       | (False # (err # ())) => liftIO1 $ throw $ SocketError "error during TLS handshake: \{err}"
-      worker_loop closer fetcher handle
+      worker_loop idle_ref closer fetcher handle
