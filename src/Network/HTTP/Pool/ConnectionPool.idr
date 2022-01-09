@@ -14,12 +14,12 @@ import Network.TLS.Verify
 import Network.Socket
 import Data.IORef
 import Data.Bits
+import Data.List1
 import System
 import System.Random
 import System.Future
 import System.Concurrency
 import System.Concurrency.BufferedChannel
-import Control.Linear.LIO
 
 mutual
   record Pool (e : Type) where
@@ -30,6 +30,7 @@ mutual
     scheduled : IORef (BufferedChannel (Event e))
     sender : Sender e
     fetcher : Fetcher e
+    last_called : IORef Integer
 
   export
   record PoolManager (e : Type) where
@@ -41,6 +42,7 @@ mutual
 
   record Worker (e : Type) where
     constructor MkWorker
+    idle : IORef Bool
     ||| Unique id of the pool for identification
     uuid : Bits64
     protocol : Protocol
@@ -66,9 +68,6 @@ pool_new_worker_id pool = do
   c <- readIORef pool.counter
   pure $ (shiftL (cast r) 32) .|. cast c
 
--- needed to avoid exceeding ambiguity dept
-%hide Control.Linear.LIO.(>>=)
-
 find_or_create_pool : RawHttpMessage -> PoolManager e -> IO (Either HttpError (Hostname, Pool e))
 find_or_create_pool message manager = do
   pools <- readIORef manager.pools
@@ -83,7 +82,8 @@ find_or_create_pool message manager = do
           buffer <- makeBufferedChannel
           sender <- becomeSender buffer
           fetcher <- becomeReceiver Blocking buffer
-          let pool = MkPool workers counter buffer sender fetcher
+          last_called <- time >>= newIORef
+          let pool = MkPool workers counter buffer sender fetcher last_called
           modifyIORef manager.pools ((host, pool) ::)
           pure (Right (host, pool))
     Nothing => pure (Left UnknownHost)
@@ -131,29 +131,46 @@ close_pool pool = do
         | _ => get_all_remaining_requests (channel ** recv) (tries + 1) acc
         get_all_remaining_requests (channel ** recv) 0 (x :: acc)
 
-should_spawn_worker : Protocol -> PoolManager e -> Pool e -> IO Bool
-should_spawn_worker protocol manager pool = do
-  n <- single_pool_active_connections protocol pool
-  if n < manager.max_per_site_connections
-     then pure True
-     else map (< manager.max_total_connections) (total_active_connections protocol manager)
+has_idle_worker : Pool e -> IO Bool
+has_idle_worker pool = readIORef pool.workers >>= loop where
+  loop : List (Worker e) -> IO Bool
+  loop [] = pure False
+  loop (x :: xs) = readIORef x.idle >>= (\b => if b then pure True else loop xs)
 
-%unhide Control.Linear.LIO.(>>=)
+pools_last_called : PoolManager e -> IO (List (Integer, Pool e))
+pools_last_called manager = do
+  pools <- readIORef manager.pools
+  let pools = map snd pools
+  flip traverse pools $ \pool => do
+    t <- readIORef pool.last_called
+    pure (t, pool)
 
 spawn_worker : {e : _} -> Fetcher e -> (HttpError -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> Hostname -> Pool e -> IO ()
 spawn_worker fetcher throw cert_check protocol hostname pool = do
   worker_id <- pool_new_worker_id pool
   Right sock <- socket AF_INET Stream 0
   | Left err => throw $ SocketError "error when creating socket: \{show err}"
-  let worker = MkWorker worker_id protocol sock pool
+  idle_ref <- newIORef True
+  let worker = MkWorker idle_ref worker_id protocol sock pool
   modifyIORef pool.workers (worker ::)
   let hostname_str = hostname_string hostname
   let port = case hostname.port of Just p => p; Nothing => protocol_port_number protocol
   0 <- connect sock (Hostname hostname.domain) (cast port)
   | err => throw $ SocketError "unable to connect to \{hostname_str}: \{show err}"
   let closer = close_worker worker
-  _ <- forkIO $ LIO.run $ worker_handle sock closer fetcher throw cert_check protocol hostname_str
-  pure ()
+  worker_handle sock idle_ref closer fetcher throw cert_check protocol hostname_str
+
+when : Applicative m => Bool -> Lazy (m ()) -> m ()
+when cond action = if cond then Force action else pure ()
+
+min_by : (ty -> ty -> Ordering) -> List1 ty -> ty
+min_by compare (x ::: xs) = loop x xs where
+  loop : ty -> List ty -> ty
+  loop x [] = x
+  loop x (y :: ys) =
+    case compare x y of
+      LT => loop x ys
+      _  => loop y ys
 
 export
 {e : _} -> Scheduler e IO (PoolManager e) where
@@ -161,11 +178,43 @@ export
     let throw = \err => channelPut request.response (Left $ Left err)
     Right (host, pool) <- find_or_create_pool request.raw_http_message manager
     | Left err => throw err
+  
+    -- update last called
+    time >>= writeIORef pool.last_called
+
     let (bc ** buffer) = pool.sender
     buffer Signal bc $ Request request
-    True <- should_spawn_worker protocol manager pool
-    | False => pure ()
-    spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
+
+    {-
+    1. if total connection is maxed and no local connection
+      send kill to the last called pool
+      spawn new thread
+    2. else if local connection is not maxed and no idle
+      spawn new thread
+    -}
+
+    local <- single_pool_active_connections protocol pool
+    all <- total_active_connections protocol manager
+    has_idle <- has_idle_worker pool
+
+    let first_condition = (all >= manager.max_per_site_connections) && (local == Z)
+    let second_condition = not first_condition && ((local < manager.max_per_site_connections) && not has_idle)
+
+    when {m=IO} first_condition $ do
+      pools_to_kill <- pools_last_called manager
+      let Just pools_to_kill = fromList pools_to_kill
+      | Nothing => pure () -- why is pool empty
+
+      let pool_to_kill = min_by (\a,b => compare (fst a) (fst b)) pools_to_kill
+      let (bc_to_kill ** buffer_to_kill) = pool.sender
+      buffer_to_kill Signal bc_to_kill Kill
+      _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
+      pure ()
+
+    when {m=IO} second_condition $ do
+      _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
+      pure ()
+
   evict_all manager = do
     pools <- readIORef manager.pools
     writeIORef manager.pools []
