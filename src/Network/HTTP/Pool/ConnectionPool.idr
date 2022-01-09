@@ -8,6 +8,7 @@ import Network.HTTP.Header
 import Network.HTTP.URL
 import Network.HTTP.Pool.Worker
 import Network.HTTP.Pool.Common
+import Network.HTTP.Certificate
 import Network.TLS
 import Network.TLS.Signature
 import Network.TLS.Verify
@@ -58,8 +59,8 @@ new_pool_manager' max_per_site_connections max_total_connections cert_check = li
 
 export
 new_pool_manager : HasIO io => Bool -> io (PoolManager e)
--- cert check later
-new_pool_manager _ = new_pool_manager' 5 25 (certificate_ignore_check) 
+new_pool_manager True = new_pool_manager' 5 25 (certificate_check certificates) 
+new_pool_manager False = new_pool_manager' 5 25 (certificate_ignore_check) 
 
 pool_new_worker_id : Pool e -> IO Bits64
 pool_new_worker_id pool = do
