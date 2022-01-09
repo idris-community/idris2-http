@@ -161,9 +161,6 @@ spawn_worker fetcher throw cert_check protocol hostname pool = do
   let closer = close_worker worker
   worker_handle sock idle_ref closer fetcher throw cert_check protocol hostname_str
 
-when : Applicative m => Bool -> Lazy (m ()) -> m ()
-when cond action = if cond then Force action else pure ()
-
 min_by : (ty -> ty -> Ordering) -> List1 ty -> ty
 min_by compare (x ::: xs) = loop x xs where
   loop : ty -> List ty -> ty
@@ -201,7 +198,7 @@ export
     let first_condition = (all >= manager.max_per_site_connections) && (local == Z)
     let second_condition = not first_condition && ((local < manager.max_per_site_connections) && not has_idle)
 
-    when {m=IO} first_condition $ do
+    when {f=IO} first_condition $ do
       pools_to_kill <- pools_last_called manager
       let Just pools_to_kill = fromList pools_to_kill
       | Nothing => pure () -- why is pool empty
@@ -212,7 +209,7 @@ export
       _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
       pure ()
 
-    when {m=IO} second_condition $ do
+    when {f=IO} second_condition $ do
       _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
       pure ()
 

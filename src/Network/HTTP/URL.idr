@@ -28,7 +28,7 @@ record URL where
   credential : Maybe URLCredential
   host : Hostname
   path : Path
-  extensions : Maybe String
+  extensions : String
 
 %runElab derive "URLCredential" [Generic, Meta, Eq, Show]
 %runElab derive "Hostname" [Generic, Meta, Eq, Show]
@@ -75,13 +75,12 @@ parse_url = do
       path <- takeWhile (\c => (c /= '#') && (c /= '?'))
       extensions <- takeWhile (const True)
       let path = fromString ("/" <+> path)
-      let extensions = if null extensions then Nothing else Just extensions
       pure $ MkURL protocol credential domain_and_port path extensions
     Left err => fail err
 
 export
-url : String -> Either String URL
-url = map fst . parse parse_url . ltrim
+url_from_string : String -> Either String URL
+url_from_string = map fst . parse parse_url . ltrim
 
 public export
 data URLProof : AsList m -> Type where
@@ -91,19 +90,19 @@ data URLProof : AsList m -> Type where
 export
 url' : (str : String) -> {auto ok : URLProof (asList str)} -> URL
 url' string =
-  case url string of
+  case url_from_string string of
     Right x => x
     Left err => assert_total $ idris_crash err
 
 export
 add : URL -> String -> URL
 add url' string =
-  case url string of
+  case url_from_string string of
     Right url'' => url''
     Left _ =>
       case break (\c => c == '#' || c == '?') string of
-        (path, "") => { path := (url'.path <+> fromString path), extensions := Nothing } url'
-        (path, extension) => { path := (url'.path <+> fromString path), extensions := (Just extension) } url'
+        (path, "") => { path := (url'.path <+> fromString path), extensions := "" } url'
+        (path, extension) => { path := (url'.path <+> fromString path), extensions := extension } url'
 
 export
 parse_hostname : String -> Either String Hostname

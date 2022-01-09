@@ -74,7 +74,7 @@ worker_read_fixed_length handle remaining chunk_size channel =
     worker_read_fixed_length handle (remaining - should_read) chunk_size channel
 
 worker_read_chunked_end : (1 _ : Handle' t_ok t_closed) -> Channel (Either (Either HttpError e) (Maybe (List Bits8))) ->
-                      L1 IO (LogicOkOrError t_ok t_closed)
+                          L1 IO (LogicOkOrError t_ok t_closed)
 worker_read_chunked_end handle channel = do
   (True # ([char] # handle)) <- read handle 1
   | (True # (char # handle)) => do
@@ -150,7 +150,8 @@ worker_logic request handle = do
   | (False # (error # handle)) => do
     liftIO1 $ throw (SocketError "error while reading response header: \{error}")
     pure1 (False # handle)
-  let Right response = deserialize_http_response $ ltrim line
+
+  let Right response = deserialize_http_response $ (ltrim line <+> "\n") -- for some reason the end line sometimes is not sent
   | Left err => do
     handle <- close handle
     liftIO1 $ throw (SocketError "error parsing http response headers: \{err}")
