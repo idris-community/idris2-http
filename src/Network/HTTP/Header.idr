@@ -22,6 +22,7 @@ data Header : Type where
   ContentLength : Header
   Connection : Header
   TransferEncoding : Header
+  Location : Header
   Unknown : String -> Header
 
 %runElab derive "Header" [Generic, Meta, Eq, DecEq, Ord, Show]
@@ -57,7 +58,7 @@ header_key_name TransferEncoding = "Transfer-Encoding"
 header_key_name (Unknown x) = x
 header_key_name x = show x
 
-export
+public export
 key_name_to_header : String -> Header
 key_name_to_header x =
   case toLower x of
@@ -79,6 +80,7 @@ header_parse_value : (header : Header) -> (String -> Maybe (header_value_type he
 header_parse_value Host = getRight . parse_hostname
 header_parse_value ContentType = Just
 header_parse_value Accept = Just
+header_parse_value Location = Just
 header_parse_value ContentLength = stringToNat' 10
 header_parse_value (Unknown x) = Just
 header_parse_value Cookie = Just . map (splitBy '=' . ltrim) . forget . split (';' ==)
@@ -93,6 +95,7 @@ header_write_value : (header : Header) -> (header_value_type header -> String)
 header_write_value Host = hostname_string
 header_write_value ContentType = id
 header_write_value Accept = id
+header_write_value Location = id
 header_write_value Cookie = join "; " . map (\(a,b) => "\{a}=\{b}")
 header_write_value ContentLength = show
 header_write_value (Unknown x) = id

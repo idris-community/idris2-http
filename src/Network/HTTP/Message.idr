@@ -97,38 +97,3 @@ http_message_response = do
 export
 deserialize_http_response : String -> Either String HttpResponse
 deserialize_http_response = map fst . parse http_message_response
-
---------- TEST
-test : String
-test =
-  serialize_http_message $ MkRawHttpMessage GET "/"
-    [ ("Host", "google.com")
-    , ("Accept", "*/*")
-    , ("Content-Length", "0")
-    ]
-
-test1 : String
-test1 =
-  """
-  HTTP/1.1 301 Moved Permanently
-  Location: http://www.google.com/
-  Content-Type: text/html; charset=UTF-8
-  Date: Thu, 06 Jan 2022 15:57:03 GMT
-  Expires: Sat, 05 Feb 2022 15:57:03 GMT
-  Cache-Control: public, max-age=2592000
-  Server: gws
-  Content-Length: 219
-  X-XSS-Protection: 0
-  X-Frame-Options: SAMEORIGIN
-  Connection: close
- 
-
-  """
-
-test3 : IO ()
-test3 = do
-  let Right response = deserialize_http_response test1
-  | Left err => putStrLn "error: \{err}"
-  let Just accept = lookup_header response.headers Accept
-  | Nothing => putStrLn "error: amoungus"
-  putStrLn $ show accept
