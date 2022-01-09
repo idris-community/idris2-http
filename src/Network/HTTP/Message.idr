@@ -24,14 +24,14 @@ record RawHttpMessage where
   headers : RawHeaders
 
 public export
-record RawHttpResponse where
-  constructor MkRawHttpResponse
+record HttpResponse where
+  constructor MkHttpResponse
   status_code : (n ** StatusCode n)
   status_name : String
   headers : RawHeaders
 
 %runElab derive "RawHttpMessage" [Generic, Meta, Show]
-%runElab derive "RawHttpResponse" [Generic, Meta, Show]
+%runElab derive "HttpResponse" [Generic, Meta, Show]
 
 export
 serialize_http_message : RawHttpMessage -> String
@@ -42,7 +42,7 @@ serialize_http_message message =
   <+> [ "", "" ]
 
 export
-serialize_http_response : RawHttpResponse -> String
+serialize_http_response : HttpResponse -> String
 serialize_http_response response =
   join "\r\n"
   $ [ "HTTP/1.1 " <+> show (response.status_code.fst) <+> response.status_name ]
@@ -81,7 +81,7 @@ deserialize_http_message : String -> Either String RawHttpMessage
 deserialize_http_message = map fst . parse http_message_praser
 
 export
-http_message_response : Parser RawHttpResponse
+http_message_response : Parser HttpResponse
 http_message_response = do
   _ <- many eol
   _ <- string "HTTP/1.1 " <|> string "HTTP/1.0 "
@@ -91,11 +91,11 @@ http_message_response = do
   eol
   headers <- many header
   case is_status_code_number status_code of
-    Yes ok => pure (MkRawHttpResponse (status_code ** nat_to_status_code status_code ok) status_name headers)
+    Yes ok => pure (MkHttpResponse (status_code ** nat_to_status_code status_code ok) status_name headers)
     No _ => fail $ "status code " <+> show status_code <+> " is outside of bound" 
 
 export
-deserialize_http_response : String -> Either String RawHttpResponse
+deserialize_http_response : String -> Either String HttpResponse
 deserialize_http_response = map fst . parse http_message_response
 
 --------- TEST
