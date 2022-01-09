@@ -5,26 +5,26 @@ import Generics.Derive
 %language ElabReflection
 
 public export
-data HttpMethod : Type where
-  GET : HttpMethod
-  HEAD : HttpMethod
-  POST : HttpMethod
-  PUT : HttpMethod
-  DELETE : HttpMethod
-  CONNECT : HttpMethod
-  OPTIONS : HttpMethod
-  PATCH : HttpMethod
-  Custom : String -> HttpMethod
+data Method : Type where
+  GET : Method
+  HEAD : Method
+  POST : Method
+  PUT : Method
+  DELETE : Method
+  CONNECT : Method
+  OPTIONS : Method
+  PATCH : Method
+  Custom : String -> Method
 
-%runElab derive "HttpMethod" [Generic, Meta, Eq, DecEq, Ord, Show]
+%runElab derive "Method" [Generic, Meta, Eq, DecEq, Ord, Show]
 
 export
-http_method_to_string : HttpMethod -> String
+http_method_to_string : Method -> String
 http_method_to_string (Custom x) = toUpper x
 http_method_to_string x = show x
 
 export
-string_to_http_method : String -> HttpMethod
+string_to_http_method : String -> Method
 string_to_http_method x =
   case toUpper x of
     "GET" => GET
@@ -36,3 +36,7 @@ string_to_http_method x =
     "OPTIONS" => OPTIONS
     "PATCH" => PATCH
     x => Custom x
+
+export
+FromString Method where
+  fromString = string_to_http_method
