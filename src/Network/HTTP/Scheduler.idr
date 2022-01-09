@@ -9,7 +9,7 @@ import System.Concurrency
 public export
 record ScheduleResponse (e : Type) (m : Type -> Type) where
   constructor MkScheduleResponse
-  raw_http_response : RawHttpResponse
+  raw_http_response : HttpResponse
   content : Channel (Either (Either HttpError e) (Maybe (List Bits8)))
 
 public export
@@ -37,7 +37,7 @@ channel_to_stream channel = do
 public export
 request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
           scheduler -> Protocol -> RawHttpMessage -> Stream (Of Bits8) m (Either e ()) ->
-          m (Either (Either HttpError e) (RawHttpResponse, Stream (Of Bits8) m (Either (Either HttpError e) ())))
+          m (Either (Either HttpError e) (HttpResponse, Stream (Of Bits8) m (Either (Either HttpError e) ())))
 request scheduler protocol msg content = do
   mvar <- makeChannel
   schedule_request scheduler protocol $ MkScheduleRequest msg content mvar 
