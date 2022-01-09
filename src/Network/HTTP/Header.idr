@@ -71,6 +71,10 @@ key_name_to_header x =
     x => Unknown x
 
 export
+FromString Header where
+  fromString = key_name_to_header
+
+export
 header_parse_value : (header : Header) -> (String -> Maybe (header_value_type header))
 header_parse_value Host = getRight . parse_hostname
 header_parse_value ContentType = Just

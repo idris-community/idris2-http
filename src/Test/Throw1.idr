@@ -4,6 +4,7 @@ import Control.Linear.LIO
 import Network.HTTP.Error
 import Utils.Streaming
 import Data.Nat
+import Data.String
 
 awe : Integer -> IO (Either () (Of Integer Integer))
 awe n = pure (Right ((n + 1) :> (n + 1)))
