@@ -11,6 +11,8 @@ import Utils.Bytes
 import System.File
 import System.File.Mode
 
+
+
 message : RawHttpMessage
 message =
   MkRawHttpMessage GET "/"
@@ -63,7 +65,7 @@ test : IO ()
 test = do
   manager <- the (IO (PoolManager ())) $ new_pool_manager True
   putStrLn "sending"
-  Right (response, content) <- request manager HTTP message (pure $ the (Either () ()) $ Right ())
+  Right (response, content) <- start_request manager HTTP message (pure $ the (Either () ()) $ Right ())
   | Left err => printLn err
   printLn response
 
@@ -73,7 +75,7 @@ test = do
   printLn $ ascii_to_string content
 
   putStrLn "sending"
-  Right (response, content) <- request manager HTTPS message2 (pure $ the (Either () ()) $ Right ())
+  Right (response, content) <- start_request manager HTTPS message2 (pure $ the (Either () ()) $ Right ())
   | Left err => printLn err
   printLn response
 
@@ -83,7 +85,7 @@ test = do
   printLn $ ascii_to_string content
 
   putStrLn "sending"
-  Right (response, content) <- request manager HTTPS message3 (pure $ the (Either () ()) $ Right ())
+  Right (response, content) <- start_request manager HTTPS message3 (pure $ the (Either () ()) $ Right ())
   | Left err => printLn err
   printLn response
 

@@ -35,10 +35,10 @@ channel_to_stream channel = do
   fromList_ content *> channel_to_stream channel
 
 public export
-request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
+start_request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
           scheduler -> Protocol -> RawHttpMessage -> Stream (Of Bits8) m (Either e ()) ->
           m (Either (Either HttpError e) (HttpResponse, Stream (Of Bits8) m (Either (Either HttpError e) ())))
-request scheduler protocol msg content = do
+start_request scheduler protocol msg content = do
   mvar <- makeChannel
   schedule_request scheduler protocol $ MkScheduleRequest msg content mvar 
   Right response <- channelGet mvar

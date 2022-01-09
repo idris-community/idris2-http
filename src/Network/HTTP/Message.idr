@@ -19,7 +19,7 @@ RawHeaders = List (String, String)
 public export
 record RawHttpMessage where
   constructor MkRawHttpMessage
-  method : HttpMethod
+  method : Method
   path : String
   headers : RawHeaders
 
