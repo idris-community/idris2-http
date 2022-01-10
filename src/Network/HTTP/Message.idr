@@ -6,7 +6,6 @@ import Generics.Derive
 import Network.HTTP.Header
 import Network.HTTP.Status
 import Network.HTTP.Method
-import Data.Mime.Apache
 
 import Debug.Trace
 
