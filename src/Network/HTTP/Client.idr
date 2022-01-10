@@ -85,6 +85,24 @@ request' client method url headers payload_size payload = do
     else
       pure $ Right (response, content)
 
+public export
+interface Bytestream (a : Type) where
+  to_stream : Monad m => a -> (Nat, Stream (Of Bits8) m ())
+
 export
-request : {e : _} -> HttpClient e -> Method -> URL -> List (String, String) -> List Bits8 -> IO (ResponseHeadersAndBody e)
-request  client method url headers payload = request' client method url headers (length payload) (\() => fromList (Right ()) payload)
+Bytestream () where 
+  to_stream () = (0, pure ())
+
+export
+Bytestream (List Bits8) where
+  to_stream list = (length list, fromList_ list)
+
+export
+Bytestream String where 
+  to_stream = to_stream . utf8_unpack
+
+export
+request : {e,a : _} -> Bytestream a => HttpClient e -> Method -> URL -> List (String, String) -> a -> IO (ResponseHeadersAndBody e)
+request  client method url headers payload =
+  let (len, stream) = to_stream payload
+  in request' client method url headers len (\() => map Right stream)
