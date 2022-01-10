@@ -1,7 +1,17 @@
-module Network.HTTP.Encoding
+module Utils.String
 
 import Data.Bits
 import Data.List
+import Data.String
+
+export
+tail : String -> String
+tail "" = ""
+tail str = assert_total (strTail str)
+
+export
+splitBy : Char -> String -> (String, String)
+splitBy sep = mapSnd tail . break (== sep)
 
 utf8_bytelen : Bits8 -> Maybe (Bits8, Nat)
 utf8_bytelen x =

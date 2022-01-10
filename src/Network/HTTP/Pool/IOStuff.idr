@@ -10,7 +10,7 @@ import Data.String
 import Data.String.Extra
 import Network.HTTP.Message
 import Network.HTTP.Header
-import Network.HTTP.Encoding
+import Utils.String
 import Data.Nat
 import Data.Vect
 import System.Future

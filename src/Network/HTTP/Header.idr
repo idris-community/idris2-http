@@ -6,10 +6,9 @@ import Data.Nat
 import Data.Either
 import Control.Monad.Error.Either
 import Control.Monad.Trans
-import Network.HTTP.Mime
 import Network.HTTP.URL
-
-import Network.HTTP.Utils
+import Network.HTTP.Cookie
+import Utils.String
 
 %language ElabReflection
 
@@ -19,6 +18,7 @@ data Header : Type where
   ContentType : Header
   Accept : Header
   Cookie : Header
+  SetCookie : Header
   ContentLength : Header
   Connection : Header
   TransferEncoding : Header
@@ -48,6 +48,7 @@ header_value_type Cookie = List (String, String)
 header_value_type Host = Hostname
 header_value_type Connection = ConnectionAction
 header_value_type TransferEncoding = TransferEncodingScheme
+header_value_type SetCookie = Cookie
 header_value_type _ = String
 
 export
@@ -55,6 +56,7 @@ header_key_name : Header -> String
 header_key_name ContentType = "Content-Type"
 header_key_name ContentLength = "Content-Length"
 header_key_name TransferEncoding = "Transfer-Encoding"
+header_key_name SetCookie = "Set-Cookie"
 header_key_name (Unknown x) = x
 header_key_name x = show x
 
@@ -69,6 +71,7 @@ key_name_to_header x =
     "content-length" => ContentLength
     "connection" => Connection
     "transfer-encoding" => TransferEncoding
+    "set-cookie" => SetCookie
     x => Unknown x
 
 export
@@ -85,6 +88,7 @@ header_parse_value ContentLength = stringToNat' 10
 header_parse_value (Unknown x) = Just
 header_parse_value Cookie = Just . map (splitBy '=' . ltrim) . forget . split (';' ==)
 header_parse_value Connection = (\case "keep-alive" => Just KeepAlive; "close" => Just Close; _ => Nothing) . toLower . trim
+header_parse_value SetCookie = deserialize_cookie
 header_parse_value TransferEncoding = \x =>
   case toLower $ trim x of
     "chunked" => Just Chunked
@@ -100,6 +104,7 @@ header_write_value Cookie = join "; " . map (\(a,b) => "\{a}=\{b}")
 header_write_value ContentLength = show
 header_write_value (Unknown x) = id
 header_write_value Connection = \case KeepAlive => "keep-alive"; Close => "close"
+header_write_value SetCookie = serialize_cookie
 header_write_value TransferEncoding = \case UnknownScheme x => x; x => toLower $ show x
 
 export
@@ -119,3 +124,11 @@ lookup_header : List (String, String) -> (header : Header) -> Maybe (header_valu
 lookup_header headers header = do
   raw_value <- lookupBy eq_ignore_case (header_key_name header) headers
   header_parse_value header raw_value
+
+export
+lookup_headers : List (String, String) -> (header : Header) -> List (header_value_type header)
+lookup_headers headers header = mapMaybe go headers where
+  go : (String, String) -> Maybe (header_value_type header)
+  go (k, v) = do
+    guard (eq_ignore_case k (header_key_name header))
+    header_parse_value header v
