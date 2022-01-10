@@ -7,6 +7,8 @@ import System.File
 import System.File.Mode
 import System
 
+%hide Data.String.Nil
+
 ||| `fputc` in C
 %foreign "C:fputc,libc"
 export
@@ -32,7 +34,7 @@ test : IO ()
 test = do
   client <- new_client {e=()} certificate_ignore_check 25 5 True True
   putStrLn "sending request"
-  Right (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] []
+  Right (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] ()
   | Left err => close client *> printLn err
   putStrLn "response header received"
   printLn response
@@ -47,7 +49,7 @@ test_cookie : IO ()
 test_cookie = do
   client <- new_client {e=()} certificate_ignore_check 25 5 True False
   putStrLn "sending cookie set request"
-  Right (response, content) <- request client GET (url' "https://httpbin.org/cookies/set/sessioncookie/123456789") [] []
+  Right (response, content) <- request client GET (url' "https://httpbin.org/cookies/set/sessioncookie/123456789") [] ()
   | Left err => close client *> printLn err
   putStrLn "response header received"
   printLn response
@@ -55,7 +57,7 @@ test_cookie = do
   printLn $ utf8_pack $ content
 
   putStrLn "sending cookie get request"
-  Right (response, content) <- request client GET (url' "https://httpbin.org/cookies") [] []
+  Right (response, content) <- request client GET (url' "https://httpbin.org/cookies") [] ()
   | Left err => close client *> printLn err
   putStrLn "response header received"
   printLn response
@@ -65,3 +67,18 @@ test_cookie = do
   -- give client ample time to close
   usleep 5000
 
+test_post : IO ()
+test_post = do
+  client <- new_client {e=()} certificate_ignore_check 25 5 True True
+  putStrLn "sending cookie set request"
+  let body = "this is the body"
+  Right (response, content) <- request client POST (url' "https://httpbin.org/post") [] body
+  | Left err => close client *> printLn err
+  putStrLn "response header received"
+  printLn response
+  content <- toList_ content
+  printLn $ utf8_pack $ content
+
+  close client
+  -- give client ample time to close
+  usleep 5000
