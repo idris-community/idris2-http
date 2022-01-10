@@ -88,7 +88,7 @@ data URLProof : AsList m -> Type where
   IsHTTPSURL : URLProof ('h' :: 't' :: 't' :: 'p' :: 's' :: ':' :: '/' :: '/' :: xs)
 
 export
-url' : (str : String) -> {auto ok : URLProof (asList str)} -> URL
+url' : (str : String) -> {auto 0 ok : URLProof (asList str)} -> URL
 url' string =
   case url_from_string string of
     Right x => x

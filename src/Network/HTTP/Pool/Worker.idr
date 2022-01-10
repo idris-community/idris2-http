@@ -8,7 +8,7 @@ import Network.HTTP.Message
 import Network.HTTP.Header
 import Network.HTTP.URL
 import Network.HTTP.Pool.Common
-import Network.HTTP.Encoding
+import Utils.String
 import Network.TLS
 import Network.TLS.Signature
 import Crypto.Random
