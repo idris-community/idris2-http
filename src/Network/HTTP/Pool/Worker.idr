@@ -8,6 +8,7 @@ import Network.HTTP.Message
 import Network.HTTP.Header
 import Network.HTTP.URL
 import Network.HTTP.Pool.Common
+import Network.HTTP.Encoding
 import Network.TLS
 import Network.TLS.Signature
 import Crypto.Random
@@ -138,7 +139,7 @@ worker_logic request handle = do
   | Nothing => do
     liftIO1 $ throw (MissingHeader "Content-Length")
     pure1 (True # handle)
-  (True # handle) <- write handle $ string_to_ascii $ serialize_http_message http_message
+  (True # handle) <- write handle $ utf8_unpack $ serialize_http_message http_message
   | (False # (error # handle)) => do
     liftIO1 $ throw (SocketError error)
     pure1 (False # handle)

@@ -10,6 +10,7 @@ import Network.HTTP.Header
 import Network.HTTP.URL
 import Network.HTTP.Path
 import Network.HTTP.Status
+import Network.HTTP.Encoding
 import Network.TLS
 import Network.TLS.Signature
 import Utils.Streaming
@@ -122,4 +123,4 @@ test = do
   putStrLn "go"
   content <- toList_ content
   close client
-  printLn $ ascii_to_string $ content
+  printLn $ utf8_pack $ content
