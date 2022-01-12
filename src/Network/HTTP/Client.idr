@@ -18,6 +18,7 @@ import Utils.String
 import Utils.Bytes
 import Data.String
 import Data.String.Extra
+import Data.Nat
 import Data.IORef
 import Decidable.Equality
 
@@ -34,7 +35,11 @@ close : {e : _} -> HasIO io => HttpClient e -> io ()
 close client = liftIO $ evict_all {m=IO,e=e} $ client.pool_manager
 
 export
-new_client : HasIO io => (String -> CertificateCheck IO) -> Nat -> Nat -> Bool -> Bool -> io (HttpClient e)
+new_client : HasIO io => (String -> CertificateCheck IO) ->
+             (max_total_connection : Nat) -> {auto 0 n01 : NonZero max_total_connection} ->
+             (max_per_site_connection: Nat) -> {auto 0 no2 : NonZero max_per_site_connection} ->
+             {auto 0 lte : LTE max_per_site_connection max_total_connection} ->
+             Bool -> Bool -> io (HttpClient e)
 new_client cert_checker max_total_connection max_per_site_connection store_cookie follow_redirect = do
   manager <- new_pool_manager' max_per_site_connection max_total_connection cert_checker
   jar <- newIORef $ MkCookieJar []
@@ -81,6 +86,9 @@ request' client method url headers payload_size payload = do
     then do
       let Just location = lookup_header response.headers Location
       | Nothing => pure (Left $ Left $ MissingHeader "Location")
+
+      -- discard responded content to make way for another request
+      consume content
       request' client method (add url location) headers payload_size payload
     else
       pure $ Right (response, content)

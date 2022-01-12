@@ -203,3 +203,8 @@ chunksOf n stream = do
   (chunk, Right rest) <- lift $ takeStream n stream
   | (chunk, Left r) => yield chunk *> pure r
   yield chunk *> chunksOf n rest
+
+||| Consume all the content in the stream
+export
+consume : Monad m => Stream (Of a) m r -> m ()
+consume = fold (\(a :> b) => b) join (\_ => pure ())
