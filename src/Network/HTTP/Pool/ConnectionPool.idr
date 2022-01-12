@@ -51,6 +51,9 @@ mutual
     socket : Socket
     parent : Pool e
 
+Show (Worker e) where
+  show worker = "Worker: \{show worker.protocol} \{show worker.uuid}"
+
 export
 new_pool_manager' : HasIO io => Nat -> Nat -> (String -> CertificateCheck IO) -> io (PoolManager e)
 new_pool_manager' max_per_site_connections max_total_connections cert_check = liftIO $ do
@@ -101,12 +104,13 @@ total_active_connections protocol manager = do
 
 close_worker : Worker e -> IO ()
 close_worker worker = do
+  -- putStrLn "closing \{show worker}"
   close worker.socket
-  let f = \w => w.uuid == worker.uuid
+  let f = \w => w.uuid /= worker.uuid
   modifyIORef worker.parent.workers (filter f)
 
-close_pool : {e : _} -> Pool e -> IO ()
-close_pool pool = do
+close_pool : {e : _} -> Condition -> Pool e -> IO ()
+close_pool cond pool = do
   buffer_reader <- becomeReceiver NonBlocking pool.scheduled
   remaining <- get_all_remaining_requests buffer_reader 0 []
   -- feed all awaiting requests with errors
@@ -114,10 +118,10 @@ close_pool pool = do
 
   -- close all sockets
   workers <- readIORef pool.workers
-  traverse_ close_worker workers
+  traverse_ (close . socket) workers
 
   -- spam kill events
-  let kills = List.replicate (2 * length workers) (the (Event e) Kill)
+  let kills = List.replicate (2 * length workers) (the (Event e) (Kill $ Just cond))
   let (bc ** buffer) = pool.sender
   traverse_ {t=List} (buffer Signal bc) kills
   where
@@ -131,6 +135,13 @@ close_pool pool = do
         Just (Request x) <- recv channel
         | _ => get_all_remaining_requests (channel ** recv) (tries + 1) acc
         get_all_remaining_requests (channel ** recv) 0 (x :: acc)
+
+wait_for_worker_close : {e : _} -> Mutex -> Condition -> List (Pool e) -> IO ()
+wait_for_worker_close mutex cond pools = do
+  conditionWaitTimeout cond mutex 1000000
+  workers <- traverse (\p => readIORef p.workers) pools
+  -- putStrLn "waiting for pool close: \{show workers}"
+  if null (join workers) then pure () else wait_for_worker_close mutex cond pools
 
 has_idle_worker : Pool e -> IO Bool
 has_idle_worker pool = readIORef pool.workers >>= loop where
@@ -205,7 +216,7 @@ export
 
       let pool_to_kill = min_by (\a,b => compare (fst a) (fst b)) pools_to_kill
       let (bc_to_kill ** buffer_to_kill) = pool.sender
-      buffer_to_kill Signal bc_to_kill Kill
+      buffer_to_kill Signal bc_to_kill (Kill Nothing)
       _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
       pure ()
 
@@ -215,5 +226,11 @@ export
 
   evict_all manager = do
     pools <- readIORef manager.pools
+    condition <- makeCondition
+    mutex <- makeMutex
     writeIORef manager.pools []
-    traverse_ close_pool $ map snd pools
+    let pools = map snd pools
+    mutexAcquire mutex
+    traverse_ (close_pool condition) pools
+    wait_for_worker_close mutex condition pools
+    mutexRelease mutex
