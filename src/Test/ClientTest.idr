@@ -5,7 +5,6 @@ import Network.HTTP.URL
 import Utils.String
 import System.File
 import System.File.Mode
-import System
 
 %hide Data.String.Nil
 
@@ -42,8 +41,6 @@ test = do
   content <- toList_ content
   printLn $ utf8_pack $ content
   close client
-  -- give client ample time to close
-  usleep 5000
 
 test_cookie : IO ()
 test_cookie = do
@@ -64,8 +61,6 @@ test_cookie = do
   content <- toList_ content
   printLn $ utf8_pack $ content
   close client
-  -- give client ample time to close
-  usleep 5000
 
 test_post : IO ()
 test_post = do
@@ -80,5 +75,3 @@ test_post = do
   printLn $ utf8_pack $ content
 
   close client
-  -- give client ample time to close
-  usleep 5000

@@ -186,9 +186,12 @@ worker_loop : {e : _} -> IORef Bool -> IO () -> Fetcher e -> (1 _ : Handle' t_ok
 worker_loop idle_ref closer (channel ** receiver) handle = do
   liftIO1 $ writeIORef idle_ref True
   Request request <- liftIO1 $ receiver channel
-  | Kill => do
+  | Kill condition => do
     close handle
     liftIO1 closer
+    case condition of
+      Just cond => liftIO1 $ conditionBroadcast cond
+      Nothing => pure ()
   liftIO1 $ writeIORef idle_ref False
   (True # handle) <- worker_logic request handle
   | (False # ()) => liftIO1 closer
