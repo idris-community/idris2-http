@@ -168,11 +168,7 @@ worker_logic request handle = do
       (True # handle) <- worker_read_chunked handle channel
       | (False # handle) => pure1 (False # handle)
       worker_finish connection_action handle
-    Just (UnknownScheme x) => do
-      handle <- close handle
-      liftIO1 $ throw (UnknownTransferEncoding x)
-      pure1 (False # handle)
-    Nothing => do
+    _ => do
       let Just content_length = lookup_header response.headers ContentLength
       | Nothing => do
         handle <- close handle

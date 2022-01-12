@@ -5,6 +5,7 @@ import Network.HTTP.URL
 import Utils.String
 import System.File
 import System.File.Mode
+import Data.Nat
 
 %hide Data.String.Nil
 
@@ -29,8 +30,8 @@ toFile file = build (pure . Right) join $ \(a :> b) => do
     | Left err => pure (Left err)
   b
 
-test : IO ()
-test = do
+test_redirect : IO ()
+test_redirect = do
   client <- new_client {e=()} certificate_ignore_check 25 5 True True
   putStrLn "sending request"
   Right (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] ()
@@ -73,5 +74,14 @@ test_post = do
   printLn response
   content <- toList_ content
   printLn $ utf8_pack $ content
+  close client
 
+test_close_without_read : IO ()
+test_close_without_read = do
+  client <- new_client {e=()} certificate_ignore_check 25 5 True True
+  putStrLn "sending request"
+  Right (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] ()
+  | Left err => close client *> printLn err
+  putStrLn "response header received"
+  printLn response
   close client
