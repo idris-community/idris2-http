@@ -163,16 +163,17 @@ worker_logic request handle = do
   let schedule_response = MkScheduleResponse response channel
   liftIO1 $ channelPut request.response (Right schedule_response)
 
-  case lookup_header response.headers TransferEncoding of
-    Just Chunked => do
+  let encodings = join $ toList (forget <$> lookup_header response.headers TransferEncoding)
+  if elem Chunked encodings
+    then do
       (True # handle) <- worker_read_chunked handle channel
       | (False # handle) => pure1 (False # handle)
       worker_finish connection_action handle
-    _ => do
+    else do
       let Just content_length = lookup_header response.headers ContentLength
       | Nothing => do
         handle <- close handle
-        liftIO1 $ throw (MissingHeader "Content-Length")
+        liftIO1 $ channelPut channel (Left $ Left $ MissingHeader "Content-Length")
         pure1 (False # handle)
       (True # handle) <- worker_read_fixed_length handle content_length 0x2000 channel
       | (False # handle) => pure1 (False # handle)

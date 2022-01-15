@@ -47,7 +47,7 @@ header_value_type ContentLength = Integer
 header_value_type Cookie = List (String, String)
 header_value_type Host = Hostname
 header_value_type Connection = ConnectionAction
-header_value_type TransferEncoding = TransferEncodingScheme
+header_value_type TransferEncoding = List1 TransferEncodingScheme
 header_value_type SetCookie = Cookie
 header_value_type _ = String
 
@@ -89,10 +89,12 @@ header_parse_value (Unknown x) = Just
 header_parse_value Cookie = Just . map (splitBy '=' . ltrim) . forget . split (';' ==)
 header_parse_value Connection = (\case "keep-alive" => Just KeepAlive; "close" => Just Close; _ => Nothing) . toLower . trim
 header_parse_value SetCookie = deserialize_cookie
-header_parse_value TransferEncoding = \x =>
-  case toLower $ trim x of
-    "chunked" => Just Chunked
-    _ => Nothing
+header_parse_value TransferEncoding = traverse parse_transfer_encoding . split (',' ==) where
+  parse_transfer_encoding : String -> Maybe TransferEncodingScheme
+  parse_transfer_encoding x =
+    case toLower $ trim x of
+      "chunked" => Just Chunked
+      _ => Nothing
 
 export
 header_write_value : (header : Header) -> (header_value_type header -> String)
@@ -105,7 +107,10 @@ header_write_value ContentLength = show
 header_write_value (Unknown x) = id
 header_write_value Connection = \case KeepAlive => "keep-alive"; Close => "close"
 header_write_value SetCookie = serialize_cookie
-header_write_value TransferEncoding = \case UnknownScheme x => x; x => toLower $ show x
+header_write_value TransferEncoding = join ", " . map write_transfer_encoding where
+  write_transfer_encoding : TransferEncodingScheme -> String
+  write_transfer_encoding (UnknownScheme x) = x
+  write_transfer_encoding x = toLower $ show x
 
 export
 Show (DPair Header $ \h => header_value_type h) where
