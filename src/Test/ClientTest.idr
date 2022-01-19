@@ -25,7 +25,7 @@ fputc b (FHandle ptr) = do
 ||| Write to a `File` from a `Stream`
 export
 toFile : HasIO m => File -> Stream (Of Bits8) m r -> m (Either FileError r)
-toFile file = build (pure . Right) join $ \(a :> b) => do
+toFile file = fold (pure . Right) join $ \(a :> b) => do
   Right () <- fputc a file
     | Left err => pure (Left err)
   b
