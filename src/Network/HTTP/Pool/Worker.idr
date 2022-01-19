@@ -197,7 +197,7 @@ worker_loop idle_ref closer (channel ** receiver) handle = do
 export
 worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Fetcher e -> (HttpError -> IO ()) ->
                 (String -> CertificateCheck IO) -> Protocol -> String -> IO ()
-worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostname = run $ do
+worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostname = LIO.run $ do
   let handle = socket_to_handle socket
   case protocol of
     HTTP =>
