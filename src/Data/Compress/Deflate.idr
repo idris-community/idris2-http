@@ -11,33 +11,31 @@ import Data.SnocList
 import Data.Stream
 import Control.Monad.Error.Either
 
-convert_byte_bit : List (Posed Bits8) -> Either a Bitstream
-convert_byte_bit bytes = Right $ MkBitstream (map ((0,) . get) bytes)
+match_off : List Nat
+match_off = [ 3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258 ]
 
-convert_bit_byte : Bitstream -> Either a (List (Posed Bits8))
-convert_bit_byte bs =
-  Right $ zipWith MkPosed (iterateN (length bs.content) S Z) (mapMaybe (\(i,x) => (guard (i == 0)) $> x) bs.content)
+match_extra : List (Fin 32)
+match_extra = [ 0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0 ]
 
-parse_deflate_uncompressed : SnocList Bits8 -> Parser Bitstream (SimpleError String) (SnocList Bits8)
-parse_deflate_uncompressed buffer = do
+dist_off : List Nat
+dist_off = [ 1,2,3,4,5,7,9,13,17,25,33,49,65,97,129,193,257,385,513,769,1025,1537,2049,3073,4097,6145,8193,12289,16385,24577 ]
+
+dist_extra : List (Fin 32)
+dist_extra = [ 0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13 ]
+
+clen_alphabets : List (Fin 19)
+clen_alphabets = [ 16,17,18,0,8,7,9,6,10,5,11,4,12,3,13,2,14,1,15 ]
+
+parse_deflate_uncompressed_len : Parser Bitstream (SimpleError String) Nat
+parse_deflate_uncompressed_len = do
   len <- le_nat 2
   nlen <- cast <$> le_nat 2
   let True = (cast {to=Bits16} len) == (complement nlen)
   | False => fail $ msg "invalid length header"
-  new_data <- toList <$> count len bit_getbyte
-  pure (buffer <>< new_data)
+  pure len
 
-match_off, dist_off : List Nat
-match_extra, dist_extra : List (Fin 32)
-
-match_off = [ 3,4,5,6, 7,8,9,10, 11,13,15,17, 19,23,27,31, 35,43,51,59, 67,83,99,115, 131,163,195,227, 258 ]
-match_extra = [ 0,0,0,0, 0,0,0,0, 1,1,1,1, 2,2,2,2, 3,3,3,3, 4,4,4,4, 5,5,5,5, 0 ]
-
-dist_extra = [ 0,0,0,0, 1,1,2,2, 3,3,4,4, 5,5,6,6, 7,7,8,8, 9,9,10,10, 11,11,12,12, 13,13 ]
-dist_off = [ 1,2,3,4, 5,7,9,13, 17,25,33,49, 65,97,129,193, 257,385,513,769, 1025,1537,2049,3073,4097,6145,8193,12289, 16385,24577]
-
-clen_alphabets : List (Fin 19)
-clen_alphabets = [ 16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15 ]
+parse_deflate_uncompressed : SnocList Bits8 -> Nat -> Parser Bitstream (SimpleError String) (SnocList Bits8)
+parse_deflate_uncompressed buffer len = (buffer <><) . toList <$> count len bit_getbyte
 
 length_lookup : Nat -> Maybe (Nat, Fin 32)
 length_lookup n = do
@@ -51,10 +49,10 @@ distance_lookup n = do
   extra <- index_may n dist_extra
   pure (off, extra)
 
-parse_deflate_huffman : HuffmanTree -> SnocList Bits8 -> Parser Bitstream (SimpleError String) (SnocList Bits8)
-parse_deflate_huffman tree buffer = do
+parse_deflate_huffman : SnocList Bits8 -> HuffmanTree -> Parser Bitstream (SimpleError String) (SnocList Bits8)
+parse_deflate_huffman buffer tree = do
   x <- tree.parse_literals
-  if x < 256 then parse_deflate_huffman tree (buffer :< cast x)
+  if x < 256 then parse_deflate_huffman (buffer :< cast x) tree
     else if x == 256 then pure buffer
     else if x < 286 then do
       let Just (off, extra) = length_lookup (cast (x - 257))
@@ -65,16 +63,15 @@ parse_deflate_huffman tree buffer = do
       let Just (off, extra) = distance_lookup (cast dcode)
       | Nothing => fail $ msg "distance symbol out of bound"
       distance <- map (\b => off + cast b) (get_bits extra)
-    
+
       let Just copied_chunk = take_last distance buffer
       | Nothing => fail $ msg "asked for distance \{show distance} but only \{show (SnocList.length buffer)} in buffer"
       let appended = take length $ stream_concat $ repeat copied_chunk
-      parse_deflate_huffman tree (buffer <>< appended)
+      parse_deflate_huffman (buffer <>< appended) tree
     else fail $ msg "invalid code \{show x} encountered"
 
 -- List (literal, code length)
-parse_deflate_code_lengths : Bits32 -> Maybe Bits32 -> Parser Bitstream (SimpleError String) (Fin 19) ->
-                             Parser Bitstream (SimpleError String) (List (Bits32, Bits32))
+parse_deflate_code_lengths : Bits32 -> Maybe Bits32 -> Parser Bitstream (SimpleError String) (Fin 19) -> ?
 parse_deflate_code_lengths n_lit_code supplied_prev_length parser = loop [] 0 where
   loop : List (Bits32, Bits32) -> Bits32 -> Parser Bitstream (SimpleError String) (List (Bits32, Bits32))
   loop acc current = if current >= n_lit_code then pure acc else parser >>= \case
@@ -94,8 +91,8 @@ parse_deflate_code_lengths n_lit_code supplied_prev_length parser = loop [] 0 wh
       let len = cast $ finToNat n
       loop ((current, len) :: acc) (current + 1)
 
-parse_deflate_dynamic : SnocList Bits8 -> Parser Bitstream (SimpleError String) (SnocList Bits8)
-parse_deflate_dynamic acc = do
+parse_deflate_dynamic : Parser Bitstream (SimpleError String) HuffmanTree
+parse_deflate_dynamic = do
   n_lit_code <- (257 +) <$> get_bits 5
   n_dist_code <- (1 +) <$> get_bits 5
   n_len_code <- (cast . (4 +)) <$> get_bits 4
@@ -115,21 +112,28 @@ parse_deflate_dynamic acc = do
   let Just distances_parser = make_tree distances (cast n_dist_code)
   | Nothing => fail $ msg "failed to generate code distances tree"
 
-  parse_deflate_huffman (MkTree literals_parser distances_parser) acc
+  pure (MkTree literals_parser distances_parser)
 
 parse_deflate_block : SnocList Bits8 -> Parser Bitstream (SimpleError String) (Bool, SnocList Bits8)
 parse_deflate_block acc = do
   final <- token
   method <- count 2 token
   map (final,) $ case method of
-    [False, False] => parse_deflate_uncompressed acc -- Uncompressed
-    [True , False] => parse_deflate_huffman default_tree acc -- Fixed Huffman
-    [False, True ] => parse_deflate_dynamic acc -- Dynamic Huffman
-    _ => fail $ msg "invalid compression method"
+    -- Uncompressed
+    [False, False] => parse_deflate_uncompressed_len >>= parse_deflate_uncompressed acc
+    -- Fixed Huffman
+    [True , False] => parse_deflate_huffman acc default_tree
+    -- Dynamic Huffman
+    [False, True ] => parse_deflate_dynamic >>= parse_deflate_huffman acc
+    -- Invalid
+    [True , True ] => fail $ msg "invalid compression method"
 
 parse_deflate' : SnocList Bits8 -> Parser Bitstream (SimpleError String) (SnocList Bits8)
 parse_deflate' acc = parse_deflate_block acc >>= (\(f,new) => if f then pure new else parse_deflate' new)
 
 export
-parse_deflate : Parser (List (Posed Bits8)) (SimpleError String) (List Bits8)
-parse_deflate = transform convert_bit_byte convert_byte_bit (toList <$> parse_deflate' Lin)
+parse_deflate : Parser (List Bits8) (SimpleError String) (List Bits8)
+parse_deflate = transform convert_bit_byte (Right . fromBits8) (toList <$> parse_deflate' Lin)
+  where
+    convert_bit_byte : Bitstream -> Either a (List Bits8)
+    convert_bit_byte bs = Right (mapMaybe (\(i,x) => (guard (i == 0)) $> x) bs.content)
