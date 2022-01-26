@@ -12,8 +12,8 @@ import Control.Monad.Error.Either
 
 import public Data.Compress.Deflate
 
-nul_term_string : (Semigroup e, Cons (Posed Bits8) i, Monoid i) => Parser i e String
-nul_term_string = map ascii_to_string $ take_until (0 ==) p_get
+nul_term_string : Semigroup e => Parser (List Bits8) e String
+nul_term_string = map ascii_to_string $ take_until (0 ==) token
 
 public export
 data CompressionFactor : Type where
@@ -75,17 +75,17 @@ record GZipFooter where
 
 ||| Nothing if eof
 export
-parse_gzip_header : (Cons (Posed Bits8) i, Monoid i) => Parser i (SimpleError String) (Maybe GZipHeader)
+parse_gzip_header : Parser (List Bits8) (SimpleError String) (Maybe GZipHeader)
 parse_gzip_header = do
-  [0x1f, 0x8b] <- count 2 p_get
+  [0x1f, 0x8b] <- count 2 token
   | [0x00, 0x00] => pure Nothing -- eof
   | x => fail $ msg "gzip magic number expected, got \{show x}"
-  0x08 <- p_get
+  0x08 <- token
   | x => fail $ msg "deflate method magic number expected, got \{show x}"
-  flag <- p_get
-  mtime <- count 4 p_get
+  flag <- token
+  mtime <- count 4 token
   let mtime = le_to_integer mtime
-  xfl <- p_get
+  xfl <- token
 
   let compression_factor =
       case xfl of
@@ -93,22 +93,22 @@ parse_gzip_header = do
         4 => Just Poorest
         _ => Nothing
 
-  os <- from_id <$> p_get
+  os <- from_id <$> token
   
   fextra <- ifA (testBit flag 2) $ do
     xlen <- p_nat 2
-    toList <$> count xlen p_get
+    toList <$> count xlen token
 
   fname <- ifA (testBit flag 3) nul_term_string
 
   fcomment <- ifA (testBit flag 4) nul_term_string
 
-  fhcrc <- ifA (testBit flag 1) (count 2 p_get)
+  fhcrc <- ifA (testBit flag 1) (count 2 token)
 
   pure (Just $ MkGZipHeader (cast mtime) compression_factor os fextra fname fcomment fhcrc)
 
 export
-parse_gzip_footer : (Cons (Posed Bits8) i, Monoid i) => Parser i (SimpleError String) GZipFooter
+parse_gzip_footer : Parser (List Bits8) (SimpleError String) GZipFooter
 parse_gzip_footer = do
   crc32 <- cast <$> p_nat 4
   isize <- cast <$> p_nat 4

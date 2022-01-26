@@ -207,20 +207,6 @@ namespace Error
   under : e -> Parser i (SimpleError e) a -> Parser i (SimpleError e) a
   under = map_error . Under
 
-||| essentially (Nat, `a`), where Nat denotes the position, usually starts with 0
-public export
-record Posed (a : Type) where
-  constructor MkPosed
-  pos : Nat
-  get : a
-
--- parser utils
-
-||| `Parser.token` but for `Posed`
-export
-p_get : Cons (Posed c) i => Parser i e c
-p_get = map get token
-
 export
 bit_getbyte : Parser Bitstream e Bits8
 bit_getbyte = more $ \(MkBitstream input) => f input
@@ -232,11 +218,11 @@ bit_getbyte = more $ \(MkBitstream input) => f input
 
 ||| parse the next `n` bytes as a natural number in big endian style
 export
-p_nat : (Semigroup e, Monoid i, Cons (Posed Bits8) i) => (n : Nat) -> Parser i e Nat
-p_nat n = cast {to = Nat} . le_to_integer <$> count n p_get
+p_nat : Semigroup e => (n : Nat) -> Parser (List Bits8) e Nat
+p_nat n = cast {to = Nat} . le_to_integer <$> count n token
 
 export
-le_nat : (Semigroup e) => (n : Nat) -> Parser Bitstream e Nat
+le_nat : Semigroup e => (n : Nat) -> Parser Bitstream e Nat
 le_nat n = cast {to = Nat} . le_to_integer <$> count n bit_getbyte
 
 ||| make sure that `p` MUST consume at least `n` tokens, fails otherwise
@@ -262,10 +248,6 @@ Functor (LazyParser i e) where
   a <*> b = Lazify $ delay (Parser.(<*>) a.parser b.parser)
 
 export
-posify : List a -> List (Posed a)
-posify list = zipWith MkPosed (iterateN (length list) S Z) list
-
-export
 ifA : Monoid i => Bool -> Lazy (Parser i e a) -> Parser i e (Maybe a)
 ifA cond action = if cond then map Just (Force action) else pure Nothing
 
@@ -280,3 +262,23 @@ take_until f parser = loop Lin where
   loop acc = do
     t <- parser
     if not $ f t then loop (acc :< t) else pure $ toList acc
+
+export
+get_bit : Num n => Parser Bitstream (SimpleError String) n
+get_bit = map (\b => if b then 1 else 0) token
+
+fin_range : (n : Nat) -> List (Fin n)
+fin_range _ = toList Fin.range
+
+read_bits : (List Bool -> List Bool) -> Fin 32 -> Parser Bitstream (SimpleError String) Bits32
+read_bits f n = do
+  bits <- toList <$> count (finToNat n) token
+  pure $ foldl (\a,(i,b) => if b then setBit a i else a) 0 $ zip (fin_range 32) (f bits)
+
+export
+get_bits : ?
+get_bits = read_bits id
+
+export
+get_huff : ?
+get_huff = read_bits reverse

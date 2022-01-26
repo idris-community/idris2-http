@@ -33,7 +33,7 @@ readFile file = (MkEitherT $ map (maybe_to_either "canont create buffer") (newBu
 test_gzip_file : String -> IO (Either String ())
 test_gzip_file path = withFile path Read (pure . show) $ \file => runEitherT $ do
   content <- readFile file
-  let result = feed (posify content) $ do
+  let result = feed content $ do
     _ <- parse_gzip_header
     body <- parse_deflate
     footer <- parse_gzip_footer
@@ -42,9 +42,9 @@ test_gzip_file path = withFile path Read (pure . show) $ \file => runEitherT $ d
   case result of
     Pure leftover (uncompressed, footer) => do
       putStrLn $ ascii_to_string uncompressed
-      printLn footer.isize
-      putStrLn "exepected: \{show footer.crc32}"
-      putStrLn "computed: \{show $ crc32 uncompressed}"
+      putStrLn ""
+      putStrLn "crc32 match: \{show (footer.crc32 == crc32 uncompressed)}"
+      putStrLn "isize match: \{show (footer.isize == (cast $ length uncompressed))}"
       putStrLn "\{show $ length uncompressed} read" 
     Fail err =>
       printLn err
