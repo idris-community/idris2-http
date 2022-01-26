@@ -37,6 +37,10 @@ fromBits8 : List Bits8 -> Bitstream
 fromBits8 = MkBitstream . map (FZ,)
 
 export
+toBits8 : Bitstream -> List Bits8
+toBits8 bs = mapMaybe (\(i,x) => (guard (i == 0)) $> x) bs.content
+
+export
 Semigroup Bitstream where
   a <+> b = MkBitstream (a.content <+> b.content)
 
