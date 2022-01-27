@@ -96,11 +96,11 @@ make_tree elem_code_length max_n_code = do
 
   let max_code_length = cast $ max' $ map fst code_length_count1
   let next_code = smallest_codes bl_count max_code_length
-  
+
   tree <- make_tree_from_length [] next_code code_length
   elem_code <- traverse (\(i,(v,l)) => (,v) <$> decompose_l_i l i) $ zip tree elem_code_length
   (elem_code_head ::: elem_code_tail) <- fromList elem_code
-  
+
   b_tree <- foldlM (\t,(p,v) => insert p v t) (uncurry mk elem_code_head) elem_code_tail
 
   pure $ tree_to_parser b_tree

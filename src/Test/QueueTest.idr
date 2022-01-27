@@ -18,8 +18,15 @@ send_stuff queue = do
   usleep 100
   send_stuff queue
 
-main : IO ()
-main = do
+brod_stuff : Queue String -> IO ()
+brod_stuff queue = do
+  t <- time
+  broadcast queue "toby \{show t}"
+  usleep 100
+  send_stuff queue
+
+main : (Queue String -> IO ()) -> IO ()
+main f = do
   queue <- mk_queue
   putStrLn "spawning workers"
   _ <- forkIO $ spawn_worker queue "1"
@@ -28,5 +35,4 @@ main = do
   _ <- forkIO $ spawn_worker queue "4"
 
   putStrLn "signalling"
-  send_stuff queue
-
+  f queue
