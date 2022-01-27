@@ -2,6 +2,7 @@ module Data.Compress.Utils.Queue
 
 import Data.Seq.Unsized
 import Data.IORef
+import Data.List
 import System.Concurrency
 
 data QueueEvent a = Msg a | Chan (Channel a)
@@ -60,21 +61,13 @@ signal (Q mutex ref) msg = do
       writeIORef ref (snoc queue (Msg msg))
       mutexRelease mutex
 
-take_until : Seq a -> (a -> Maybe b) -> (Seq a, List b)
-take_until queue f = loop [] queue where
-  loop : List b -> ? -> ?
-  loop acc queue =
-    case viewl queue of
-      Just (msg, rest) => maybe (queue, acc) (\x => loop (x :: acc) rest) (f msg)
-      Nothing => (queue, acc)
-
 ||| send a message to all the receivers
 export
 broadcast : Queue a -> a -> IO ()
 broadcast (Q mutex ref) msg = do
   mutexAcquire mutex
   queue <- readIORef ref
-  let (rest, channels) = take_until queue (\case Chan chan => Just chan; _ => Nothing)
-  writeIORef ref rest
+  writeIORef ref empty
   mutexRelease mutex
+  let channels = mapMaybe (\case Chan chan => Just chan; _ => Nothing) (toList queue)
   traverse_ (flip channelPut msg) channels

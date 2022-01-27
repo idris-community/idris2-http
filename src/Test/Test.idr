@@ -33,25 +33,24 @@ readFile file = (MkEitherT $ map (maybe_to_either "canont create buffer") (newBu
 test_gzip_file : String -> IO (Either String ())
 test_gzip_file path = withFile path Read (pure . show) $ \file => runEitherT $ do
   content <- readFile file
-  let result = feed content $ do
-    _ <- parse_gzip_header
-    body <- parse_deflate
-    footer <- parse_gzip_footer
-    pure (body, footer)
-
-  case result of
-    Pure leftover (uncompressed, footer) => do
+  case feed content parse_gzip_header of
+    Pure deflate_data _ => do
+      let Right uncompressed = deflate_decompress deflate_data
+      | Left err => printLn err
       putStrLn $ ascii_to_string uncompressed
       putStrLn ""
-      putStrLn "crc32 match: \{show (footer.crc32 == crc32 uncompressed)}"
-      putStrLn "isize match: \{show (footer.isize == (cast $ length uncompressed))}"
-      putStrLn "\{show $ length uncompressed} read" 
+      -- putStrLn "crc32 match: \{show (footer.crc32 == crc32 uncompressed)}"
+      -- putStrLn "isize match: \{show (footer.isize == (cast $ length uncompressed))}"
+      -- putStrLn "\{show $ length uncompressed} read"
     Fail err =>
       printLn err
     _ => printLn "underfed"
 
 test_deflate_uncompressed : IO (Either String ())
 test_deflate_uncompressed = test_gzip_file "test/random.bin.gz"
+
+test_deflate_fixed : IO (Either String ())
+test_deflate_fixed = test_gzip_file "test/hello.gz"
 
 test_deflate_text : IO (Either String ())
 test_deflate_text = test_gzip_file "test/jabberwock.txt.gz"
