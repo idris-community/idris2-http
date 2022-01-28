@@ -8,56 +8,22 @@ import Data.Bits
 import Data.List
 import Data.SnocList
 import Data.Stream
+import Data.Compress.CRC
 import Control.Monad.Error.Either
 
 import public Data.Compress.Inflate
 
 public export
-data CompressionFactor : Type where
-  Poorest : CompressionFactor
-  Strongest : CompressionFactor
-
-||| It should be called file system but the RFC says it is operating system
-public export
-data OperatingSystem : Type where
-  FAT : OperatingSystem
-  Amiga : OperatingSystem
-  VMS : OperatingSystem
-  Unix : OperatingSystem
-  VMCMS : OperatingSystem
-  Atari : OperatingSystem
-  HPFS : OperatingSystem
-  Macintosh : OperatingSystem
-  ZSystem : OperatingSystem
-  CPM : OperatingSystem
-  TOPS20 : OperatingSystem
-  NTFS : OperatingSystem
-  QDOS : OperatingSystem
-  Acorn : OperatingSystem
-  UnknownOS : Bits8 -> OperatingSystem
-
-public export
-record GZipHeader where
-  constructor MkGZipHeader
-  mtime : Bits64
-  compression_factor : Maybe CompressionFactor
-  os : OperatingSystem
-  extra_fields : Maybe (List Bits8)
-  file_name : Maybe String
-  comment : Maybe String
-  header_crc : Maybe (Vect 2 Bits8)
-
-public export
 data GZipParserState'
   = GZipHead
+  | GZipFoot
   | GZipInflate
-  | GZipOrigin
 
 public export
 data GZipParserState : GZipParserState' -> Type where
-  AtGHeader : GZipHeader -> GZipParserState GZipHead
-  AtInflate : (isize : Bits32) -> (crc32 : Bits32) -> GZipParserState GZipInflate
-  AtOrigin : GZipParserState GZipOrigin
+  AtGHeader : GZipParserState GZipHead
+  AtInflate : (isize : Bits32) -> (crc32 : Bits32) -> InflateState -> GZipParserState GZipInflate
+  AtGFooter : (isize : Bits32) -> (crc32 : Bits32) -> GZipParserState GZipFoot
 
 public export
 data GZipState
@@ -65,37 +31,18 @@ data GZipState
 
 export
 gzip_state_init : GZipState
-gzip_state_init = MkState [] (_ ** AtOrigin)
+gzip_state_init = MkState [] (_ ** AtGHeader)
 
 nul_term_string : Semigroup e => Parser (List Bits8) e String
 nul_term_string = map ascii_to_string $ take_until (0 ==) token
 
-from_id : Bits8 -> OperatingSystem
-from_id  0 = FAT
-from_id  1 = Amiga
-from_id  2 = VMS
-from_id  3 = Unix
-from_id  4 = VMCMS
-from_id  5 = Atari
-from_id  6 = HPFS
-from_id  7 = Macintosh
-from_id  8 = ZSystem
-from_id  9 = CPM
-from_id 10 = TOPS20
-from_id 11 = NTFS
-from_id 12 = QDOS
-from_id 13 = Acorn
-from_id x  = UnknownOS x
-
-public export
 record GZipFooter where
   constructor MkGZipFooter
   crc32 : Bits32
   isize : Bits32
 
-||| Nothing if eof
 export
-parse_gzip_header : Parser (List Bits8) (SimpleError String) GZipHeader
+parse_gzip_header : Parser (List Bits8) (SimpleError String) ()
 parse_gzip_header = do
   [0x1f, 0x8b] <- count 2 token
   | x => fail $ msg "gzip magic number expected, got \{show x}"
@@ -103,16 +50,8 @@ parse_gzip_header = do
   | x => fail $ msg "deflate method magic number expected, got \{show x}"
   flag <- token
   mtime <- count 4 token
-  let mtime = le_to_integer mtime
   xfl <- token
-
-  let compression_factor =
-      case xfl of
-        2 => Just Strongest
-        4 => Just Poorest
-        _ => Nothing
-
-  os <- from_id <$> token
+  os <- token
 
   fextra <- ifA (testBit flag 2) $ do
     xlen <- p_nat 2
@@ -124,7 +63,7 @@ parse_gzip_header = do
 
   fhcrc <- ifA (testBit flag 1) (count 2 token)
 
-  pure (MkGZipHeader (cast mtime) compression_factor os fextra fname fcomment fhcrc)
+  pure ()
 
 export
 parse_gzip_footer : Parser (List Bits8) (SimpleError String) GZipFooter
@@ -133,5 +72,41 @@ parse_gzip_footer = do
   isize <- cast <$> p_nat 4
   pure (MkGZipFooter crc32 isize)
 
+feed_gzip' : SnocList Bits8 -> DPair GZipParserState' GZipParserState -> List Bits8 -> Either String (SnocList Bits8, GZipState)
+feed_gzip' acc (_ ** AtGHeader) [] = Right (acc, MkState [] (_ ** AtGHeader))
+feed_gzip' acc (_ ** AtGHeader) content =
+  case feed content parse_gzip_header of
+    Pure leftover header => feed_gzip' acc (_ ** AtInflate 0 0 inflate_state_init) leftover
+    Fail err => Left $ show err
+    _ => Right (acc, MkState content (_ ** AtGHeader))
+feed_gzip' acc (_ ** AtInflate isize crc32 inflate_state) content =
+  case feed_inflate inflate_state content of
+    Left err => Left err
+    Right (uncompressed, (MkState _ _ (_ ** AtEnd leftover))) =>
+      let isize = isize + (cast $ length uncompressed)
+          crc32 = update_crc32 crc32 uncompressed
+      in feed_gzip' (acc <>< uncompressed) (_ ** AtGFooter isize crc32) (toList leftover)
+    Right (uncompressed, inflate_state) => -- underfed
+      let isize = isize + (cast $ length uncompressed)
+          crc32 = update_crc32 crc32 uncompressed
+      in Right (acc <>< uncompressed, MkState [] (_ ** AtInflate isize crc32 inflate_state))
+feed_gzip' acc (_ ** AtGFooter isize crc32) content =
+  case feed content parse_gzip_footer of
+    Pure leftover footer =>
+      if footer.crc32 /= crc32 then Left "crc32 mismatch"
+        else if footer.isize /= isize then Left "isize mismatch"
+        else feed_gzip' acc (_ ** AtGHeader) leftover
+    Fail err => Left $ show err
+    _ => Right (acc, MkState content (_ ** AtGFooter isize crc32))
+
 export
-feed_gzip : GZipState -> List Bits8 -> Either String (List Bits8, Maybe GZipState)
+feed_gzip : GZipState -> List Bits8 -> Either String (List Bits8, GZipState)
+feed_gzip (MkState leftover state) input = mapFst toList <$> feed_gzip' Lin state (leftover <+> input)
+
+export
+gzip_decompress : List Bits8 -> Either String (List Bits8)
+gzip_decompress compressed =
+  case feed_gzip gzip_state_init compressed of
+    Left err => Left err
+    Right (uncompressed, (MkState [] (_ ** AtGHeader))) => Right uncompressed
+    Right _ => Left "underfed"

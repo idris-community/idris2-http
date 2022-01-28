@@ -30,8 +30,8 @@ data InflateState
   = MkState Bitstream (SnocList Bits8) (DPair InflateParserState' InflateParserState)
 
 export
-deflate_state_init : InflateState
-deflate_state_init = MkState neutral neutral (_ ** AtHeader)
+inflate_state_init : InflateState
+inflate_state_init = MkState neutral neutral (_ ** AtHeader)
 
 match_off : List Nat
 match_off = [ 3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258 ]
@@ -54,8 +54,8 @@ length_lookup n = Just (!(index_may n match_off), !(index_may n match_extra))
 distance_lookup : Nat -> Maybe (Nat, Fin 32)
 distance_lookup n = Just (!(index_may n dist_off), !(index_may n dist_extra))
 
-parse_deflate_uncompressed_len : Parser Bitstream (SimpleError String) Nat
-parse_deflate_uncompressed_len = do
+parse_inflate_uncompressed_len : Parser Bitstream (SimpleError String) Nat
+parse_inflate_uncompressed_len = do
   len <- le_nat 2
   nlen <- cast <$> le_nat 2
   let True = (cast {to=Bits16} len) == (complement nlen)
@@ -63,8 +63,8 @@ parse_deflate_uncompressed_len = do
   pure len
 
 -- List (literal, code length)
-parse_deflate_code_lengths : Bits32 -> Maybe Bits32 -> Parser Bitstream (SimpleError String) (Fin 19) -> ?
-parse_deflate_code_lengths n_lit_code supplied_prev_length parser = loop [] 0 where
+parse_inflate_code_lengths : Bits32 -> Maybe Bits32 -> Parser Bitstream (SimpleError String) (Fin 19) -> ?
+parse_inflate_code_lengths n_lit_code supplied_prev_length parser = loop [] 0 where
   loop : List (Bits32, Bits32) -> Bits32 -> Parser Bitstream (SimpleError String) (List (Bits32, Bits32))
   loop acc current = if current >= n_lit_code then pure acc else parser >>= \case
     16 => do
@@ -83,8 +83,8 @@ parse_deflate_code_lengths n_lit_code supplied_prev_length parser = loop [] 0 wh
       let len = cast $ finToNat n
       loop ((current, len) :: acc) (current + 1)
 
-parse_deflate_dynamic : Parser Bitstream (SimpleError String) HuffmanTree
-parse_deflate_dynamic = do
+parse_inflate_dynamic : Parser Bitstream (SimpleError String) HuffmanTree
+parse_inflate_dynamic = do
   n_lit_code <- (257 +) <$> get_bits 5
   n_dist_code <- (1 +) <$> get_bits 5
   n_len_code <- (cast . (4 +)) <$> get_bits 4
@@ -94,13 +94,13 @@ parse_deflate_dynamic = do
   let Just code_length_parser = make_tree alphabets 19
   | Nothing => fail $ msg "failed to generate code length tree"
 
-  literals <- parse_deflate_code_lengths n_lit_code Nothing code_length_parser
+  literals <- parse_inflate_code_lengths n_lit_code Nothing code_length_parser
   let Just prev_length = map snd $ head' literals
   | Nothing => fail $ msg "literals tree parser did nothing"
   let Just literals_parser = make_tree literals (cast n_lit_code)
   | Nothing => fail $ msg "failed to generate code literals tree"
 
-  distances <- parse_deflate_code_lengths n_dist_code (Just prev_length) code_length_parser
+  distances <- parse_inflate_code_lengths n_dist_code (Just prev_length) code_length_parser
   let Just distances_parser = make_tree distances (cast n_dist_code)
   | Nothing => fail $ msg "failed to generate code distances tree"
 
@@ -108,8 +108,8 @@ parse_deflate_dynamic = do
 
 data HuffmanOutput = End | Literal Bits8 | Copy Nat Nat
 
-parse_deflate_huffman : HuffmanTree -> Parser Bitstream (SimpleError String) HuffmanOutput
-parse_deflate_huffman tree = do
+parse_inflate_huffman : HuffmanTree -> Parser Bitstream (SimpleError String) HuffmanOutput
+parse_inflate_huffman tree = do
   x <- tree.parse_literals
   if x < 256 then pure $ Literal (cast x)
     else if x == 256 then pure End
@@ -125,20 +125,20 @@ parse_deflate_huffman tree = do
       pure $ Copy (cast length) (cast distance)
     else fail $ msg "invalid code \{show x} encountered"
 
-parse_deflate_header : Parser Bitstream (SimpleError String) (DPair InflateParserState' InflateParserState)
-parse_deflate_header = do
+parse_inflate_header : Parser Bitstream (SimpleError String) (DPair InflateParserState' InflateParserState)
+parse_inflate_header = do
   final <- token
   case !(count 2 token) of
     -- Uncompressed
     [False, False] => do
-      len <- parse_deflate_uncompressed_len
+      len <- parse_inflate_uncompressed_len
       pure (_ ** AtUncompressed final len)
     -- Fixed Huffman
     [True , False] => do
       pure (_ ** AtHuffman final default_tree)
     -- Dynamic Huffman
     [False, True ] => do
-      tree <- parse_deflate_dynamic
+      tree <- parse_inflate_dynamic
       pure (_ ** AtHuffman final tree)
     -- Invalid
     [True , True ] => do
@@ -148,37 +148,37 @@ next_state : (is_final : Bool) -> DPair InflateParserState' InflateParserState
 next_state True  = (_ ** AtEnd [<])
 next_state False = (_ ** AtHeader)
 
-feed_deflate' : SnocList Bits8 -> SnocList Bits8 -> DPair InflateParserState' InflateParserState ->
+feed_inflate' : SnocList Bits8 -> SnocList Bits8 -> DPair InflateParserState' InflateParserState ->
                 Bitstream -> Either String (SnocList Bits8, InflateState)
 
-feed_deflate' acc ob (_ ** AtEnd leftover) content =
+feed_inflate' acc ob (_ ** AtEnd leftover) content =
   Right (acc, MkState neutral neutral (_ ** AtEnd (leftover <>< toBits8 content))) -- terminates
 
-feed_deflate' acc ob (InflateInit ** state) content =
-  case feed content parse_deflate_header of
+feed_inflate' acc ob (InflateInit ** state) content =
+  case feed content parse_inflate_header of
     Pure leftover state =>
-      feed_deflate' acc ob state leftover
+      feed_inflate' acc ob state leftover
     Fail err =>
       Left (show err)
     _ => -- underfed, need more input
       Right (acc, MkState content ob (_ ** AtHeader))
 
-feed_deflate' acc ob (_ ** (AtUncompressed final remaining)) content =
+feed_inflate' acc ob (_ ** (AtUncompressed final remaining)) content =
   let (output, leftover) = fromBits8 <$> splitAt remaining (toBits8 content)
       ob = ob <>< output
       acc = acc <>< output
   in case minus remaining (length output) of
        S n => Right (acc, MkState leftover ob (_ ** AtUncompressed final (S n))) -- underfed
-       Z   => feed_deflate' acc ob (next_state final) leftover
+       Z   => feed_inflate' acc ob (next_state final) leftover
 
-feed_deflate' acc' ob (_ ** (AtHuffman final tree)) content = go acc' ob tree content where
+feed_inflate' acc' ob (_ ** (AtHuffman final tree)) content = go acc' ob tree content where
   go : SnocList Bits8 -> SnocList Bits8 -> HuffmanTree -> Bitstream -> Either String (SnocList Bits8, InflateState)
   go acc ob tree input =
-    case feed input (parse_deflate_huffman tree) of
+    case feed input (parse_inflate_huffman tree) of
       Fail err =>
         Left (show err)
       Pure leftover End =>
-        feed_deflate' acc ob (next_state final) leftover
+        feed_inflate' acc ob (next_state final) leftover
       Pure leftover (Literal literal) =>
         go (acc :< literal) (ob :< literal) tree leftover
       Pure leftover (Copy len distance) =>
@@ -191,13 +191,13 @@ feed_deflate' acc' ob (_ ** (AtHuffman final tree)) content = go acc' ob tree co
         Right (acc, MkState input ob (_ ** (AtHuffman final tree)))
 
 export
-feed_deflate : InflateState -> List Bits8 -> Either String (List Bits8, InflateState)
-feed_deflate (MkState ib ob state) content = mapFst toList <$> feed_deflate' Lin ob state (ib <+> fromBits8 content)
+feed_inflate : InflateState -> List Bits8 -> Either String (List Bits8, InflateState)
+feed_inflate (MkState ib ob state) content = mapFst toList <$> feed_inflate' Lin ob state (ib <+> fromBits8 content)
 
 export
-deflate_decompress : List Bits8 -> Either String (List Bits8)
-deflate_decompress compressed =
-  case feed_deflate deflate_state_init compressed of
+inflate_decompress : List Bits8 -> Either String (List Bits8)
+inflate_decompress compressed =
+  case feed_inflate inflate_state_init compressed of
     Left err => Left err
     Right (uncompressed, (MkState _ _ (InflateEnd ** _))) => Right uncompressed
     Right _ => Left "underfed"
