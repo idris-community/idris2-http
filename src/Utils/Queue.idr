@@ -1,4 +1,4 @@
-module Data.Compress.Utils.Queue
+module Utils.Queue
 
 import Data.Seq.Unsized
 import Data.IORef
@@ -11,13 +11,13 @@ export
 data Queue a = Q Mutex (IORef (Seq (QueueEvent a)))
 
 export
-mk_queue : IO (Queue a)
-mk_queue = pure $ Q !makeMutex !(newIORef empty)
+mk_queue : HasIO io => io (Queue a)
+mk_queue = liftIO $ pure $ Q !makeMutex !(newIORef empty)
 
 ||| receive a message, if empty, block until there is one
 export
-recv : Queue a -> IO a
-recv (Q mutex ref) = do
+recv : HasIO io => Queue a -> io a
+recv (Q mutex ref) = liftIO $ do
   mutexAcquire mutex
   queue <- readIORef ref
   case viewl queue of
@@ -33,8 +33,8 @@ recv (Q mutex ref) = do
 
 ||| receive a message, if empty, returns nothing
 export
-recv' : Queue a -> IO (Maybe a)
-recv' (Q mutex ref) = do
+recv' : HasIO io => Queue a -> io (Maybe a)
+recv' (Q mutex ref) = liftIO $ do
   mutexAcquire mutex
   queue <- readIORef ref
   case viewl queue of
@@ -48,8 +48,8 @@ recv' (Q mutex ref) = do
 
 ||| send a message to one of the receiver
 export
-signal : Queue a -> a -> IO ()
-signal (Q mutex ref) msg = do
+signal : HasIO io => Queue a -> a -> io ()
+signal (Q mutex ref) msg = liftIO $ do
   mutexAcquire mutex
   queue <- readIORef ref
   case viewl queue of
@@ -63,8 +63,8 @@ signal (Q mutex ref) msg = do
 
 ||| send a message to all the receivers
 export
-broadcast : Queue a -> a -> IO ()
-broadcast (Q mutex ref) msg = do
+broadcast : HasIO io => Queue a -> a -> io ()
+broadcast (Q mutex ref) msg = liftIO $ do
   mutexAcquire mutex
   queue <- readIORef ref
   writeIORef ref empty
