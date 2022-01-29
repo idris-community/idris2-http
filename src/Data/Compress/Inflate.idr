@@ -4,6 +4,8 @@ import Data.Compress.Utils.Parser
 import Data.Compress.Utils.Bytes
 import Data.Compress.Utils.Misc
 import Data.Compress.Huffman
+import Data.Compress.Interface
+import Data.Compress.Utils.FiniteBuffer
 import Data.Vect
 import Data.Bits
 import Data.List
@@ -27,11 +29,11 @@ data InflateParserState : InflateParserState' -> Type where
 
 public export
 data InflateState
-  = MkState Bitstream (SnocList Bits8) (DPair InflateParserState' InflateParserState)
+  = MkState Bitstream (FiniteBuffer Bits8) (DPair InflateParserState' InflateParserState)
 
 export
 inflate_state_init : InflateState
-inflate_state_init = MkState neutral neutral (_ ** AtHeader)
+inflate_state_init = MkState neutral (empty 32768) (_ ** AtHeader)
 
 match_off : List Nat
 match_off = [ 3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258 ]
@@ -148,11 +150,11 @@ next_state : (is_final : Bool) -> DPair InflateParserState' InflateParserState
 next_state True  = (_ ** AtEnd [<])
 next_state False = (_ ** AtHeader)
 
-feed_inflate' : SnocList Bits8 -> SnocList Bits8 -> DPair InflateParserState' InflateParserState ->
+feed_inflate' : SnocList Bits8 -> FiniteBuffer Bits8 -> DPair InflateParserState' InflateParserState ->
                 Bitstream -> Either String (SnocList Bits8, InflateState)
 
 feed_inflate' acc ob (_ ** AtEnd leftover) content =
-  Right (acc, MkState neutral neutral (_ ** AtEnd (leftover <>< toBits8 content))) -- terminates
+  Right (acc, MkState neutral (empty 0) (_ ** AtEnd (leftover <>< toBits8 content))) -- terminates
 
 feed_inflate' acc ob (InflateInit ** state) content =
   case feed content parse_inflate_header of
@@ -165,14 +167,14 @@ feed_inflate' acc ob (InflateInit ** state) content =
 
 feed_inflate' acc ob (_ ** (AtUncompressed final remaining)) content =
   let (output, leftover) = fromBits8 <$> splitAt remaining (toBits8 content)
-      ob = ob <>< output
+      ob = ob +<>< output
       acc = acc <>< output
   in case minus remaining (length output) of
        S n => Right (acc, MkState leftover ob (_ ** AtUncompressed final (S n))) -- underfed
        Z   => feed_inflate' acc ob (next_state final) leftover
 
 feed_inflate' acc' ob (_ ** (AtHuffman final tree)) content = go acc' ob tree content where
-  go : SnocList Bits8 -> SnocList Bits8 -> HuffmanTree -> Bitstream -> Either String (SnocList Bits8, InflateState)
+  go : SnocList Bits8 -> FiniteBuffer Bits8 -> HuffmanTree -> Bitstream -> Either String (SnocList Bits8, InflateState)
   go acc ob tree input =
     case feed input (parse_inflate_huffman tree) of
       Fail err =>
@@ -180,12 +182,12 @@ feed_inflate' acc' ob (_ ** (AtHuffman final tree)) content = go acc' ob tree co
       Pure leftover End =>
         feed_inflate' acc ob (next_state final) leftover
       Pure leftover (Literal literal) =>
-        go (acc :< literal) (ob :< literal) tree leftover
+        go (acc :< literal) (ob +< literal) tree leftover
       Pure leftover (Copy len distance) =>
         case take_last distance ob of
           Just copied_chunk =>
             let appended = take len $ stream_concat $ repeat copied_chunk
-            in go (acc <>< appended) (ob <>< appended) tree leftover
+            in go (acc <>< appended) (ob +<>< appended) tree leftover
           Nothing => Left "asked for distance \{show distance} but only \{show (length ob)} in buffer"
       _ => -- underfed, need more input
         Right (acc, MkState input ob (_ ** (AtHuffman final tree)))

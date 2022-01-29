@@ -27,7 +27,7 @@ gzcat path = withFile path Read (pure . show) $ \file => runEitherT $ (lift $ ne
   loop : File -> GZipState -> Buffer -> EitherT String IO ()
   loop file state buffer = do
     False <- lift $ fEOF file
-    | True => case state of MkState [] (_ ** AtGHeader) => putStrLn ""; _ => idris_crash "gzip stream not complete"
+    | True => case state of MkState [] (_ ** AtGHeader) => putStrLn "\nok"; _ => idris_crash "gzip stream not complete"
     buffer_size <- lift (rawSize buffer)
     len <- bimapEitherT show id $ MkEitherT $ readBufferData file buffer 0 buffer_size
     data' <- traverse (getBits8 buffer) [0..(len-1)]
