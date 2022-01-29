@@ -31,10 +31,6 @@ public export
 data InflateState
   = MkState Bitstream (FiniteBuffer Bits8) (DPair InflateParserState' InflateParserState)
 
-export
-inflate_state_init : InflateState
-inflate_state_init = MkState neutral (empty 32768) (_ ** AtHeader)
-
 match_off : List Nat
 match_off = [ 3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258 ]
 
@@ -193,13 +189,8 @@ feed_inflate' acc' ob (_ ** (AtHuffman final tree)) content = go acc' ob tree co
         Right (acc, MkState input ob (_ ** (AtHuffman final tree)))
 
 export
-feed_inflate : InflateState -> List Bits8 -> Either String (List Bits8, InflateState)
-feed_inflate (MkState ib ob state) content = mapFst toList <$> feed_inflate' Lin ob state (ib <+> fromBits8 content)
-
-export
-inflate_decompress : List Bits8 -> Either String (List Bits8)
-inflate_decompress compressed =
-  case feed_inflate inflate_state_init compressed of
-    Left err => Left err
-    Right (uncompressed, (MkState _ _ (InflateEnd ** _))) => Right uncompressed
-    Right _ => Left "underfed"
+Decompressor InflateState where
+  feed (MkState ib ob state) content = mapFst toList <$> feed_inflate' Lin ob state (ib <+> fromBits8 content)
+  done (MkState _ _ (_ ** AtEnd leftover)) = Right (toList leftover)
+  done _ = Left "inflate: underfed"
+  init = MkState neutral (empty 32768) (_ ** AtHeader)
