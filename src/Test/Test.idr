@@ -10,6 +10,7 @@ import Data.Buffer
 import Data.List
 import Data.Compress.Utils.Parser
 import Data.Compress.Utils.Bytes
+import Data.Compress.Interface
 import Data.Vect
 import Data.SnocList
 
@@ -23,7 +24,7 @@ new_buffer : Nat -> IO Buffer
 new_buffer n = case !(newBuffer (cast n)) of Just buf => pure buf; Nothing => idris_crash "cannot make buffer"
 
 gzcat : String -> IO (Either String ())
-gzcat path = withFile path Read (pure . show) $ \file => runEitherT $ (lift $ new_buffer 128) >>= loop file gzip_state_init where
+gzcat path = withFile path Read (pure . show) $ \file => runEitherT $ (lift $ new_buffer 128) >>= loop file init where
   loop : File -> GZipState -> Buffer -> EitherT String IO ()
   loop file state buffer = do
     False <- lift $ fEOF file
@@ -31,7 +32,7 @@ gzcat path = withFile path Read (pure . show) $ \file => runEitherT $ (lift $ ne
     buffer_size <- lift (rawSize buffer)
     len <- bimapEitherT show id $ MkEitherT $ readBufferData file buffer 0 buffer_size
     data' <- traverse (getBits8 buffer) [0..(len-1)]
-    let Right (uncompressed, state) = feed_gzip state data'
+    let Right (uncompressed, state) = feed state data'
     | Left err => printLn "err: \{err}"
     lift $ putStr $ ascii_to_string uncompressed
     loop file state buffer

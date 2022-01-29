@@ -3,6 +3,7 @@ module Data.Compress.GZip
 import Data.Compress.Utils.Parser
 import Data.Compress.Utils.Bytes
 import Data.Compress.Utils.Misc
+import Data.Compress.Interface
 import Data.Vect
 import Data.Bits
 import Data.List
@@ -28,10 +29,6 @@ data GZipParserState : GZipParserState' -> Type where
 public export
 data GZipState
   = MkState (List Bits8) (DPair GZipParserState' GZipParserState)
-
-export
-gzip_state_init : GZipState
-gzip_state_init = MkState [] (_ ** AtGHeader)
 
 nul_term_string : Semigroup e => Parser (List Bits8) e String
 nul_term_string = map ascii_to_string $ take_until (0 ==) token
@@ -76,11 +73,11 @@ feed_gzip' : SnocList Bits8 -> DPair GZipParserState' GZipParserState -> List Bi
 feed_gzip' acc (_ ** AtGHeader) [] = Right (acc, MkState [] (_ ** AtGHeader))
 feed_gzip' acc (_ ** AtGHeader) content =
   case feed content parse_gzip_header of
-    Pure leftover header => feed_gzip' acc (_ ** AtInflate 0 0 inflate_state_init) leftover
+    Pure leftover header => feed_gzip' acc (_ ** AtInflate 0 0 init) leftover
     Fail err => Left $ show err
     _ => Right (acc, MkState content (_ ** AtGHeader))
 feed_gzip' acc (_ ** AtInflate isize crc32 inflate_state) content =
-  case feed_inflate inflate_state content of
+  case feed inflate_state content of
     Left err => Left err
     Right (uncompressed, (MkState _ _ (_ ** AtEnd leftover))) =>
       let isize = isize + (cast $ length uncompressed)
@@ -100,13 +97,9 @@ feed_gzip' acc (_ ** AtGFooter isize crc32) content =
     _ => Right (acc, MkState content (_ ** AtGFooter isize crc32))
 
 export
-feed_gzip : GZipState -> List Bits8 -> Either String (List Bits8, GZipState)
-feed_gzip (MkState leftover state) input = mapFst toList <$> feed_gzip' Lin state (leftover <+> input)
-
-export
-gzip_decompress : List Bits8 -> Either String (List Bits8)
-gzip_decompress compressed =
-  case feed_gzip gzip_state_init compressed of
-    Left err => Left err
-    Right (uncompressed, (MkState [] (_ ** AtGHeader))) => Right uncompressed
-    Right _ => Left "underfed"
+Decompressor GZipState where
+  feed (MkState leftover state) input = mapFst toList <$> feed_gzip' Lin state (leftover <+> input)
+  done (MkState [] (_ ** AtGHeader)) = Right []
+  done (MkState _ (_ ** AtGHeader)) = Left "gzip: leftover data after header"
+  done _ = Left "gzip: underfed"
+  init = MkState [] (_ ** AtGHeader)
