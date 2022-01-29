@@ -1,6 +1,6 @@
 module Test.QueueTest
 
-import Data.Compress.Utils.Queue
+import Utils.Queue
 import System.Future
 import System
 
