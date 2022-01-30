@@ -47,7 +47,7 @@ new_client cert_checker max_total_connection max_per_site_connection store_cooki
 
 public export
 ResponseHeadersAndBody : Type -> Type
-ResponseHeadersAndBody e = Either (Either HttpError e) (HttpResponse, Stream (Of Bits8) IO (Either (Either HttpError e) ()))
+ResponseHeadersAndBody e = Either (HttpError e) (HttpResponse, Stream (Of Bits8) IO (Either (HttpError e) ()))
 
 replace : Eq a => List (a, b) -> List (a, b) -> List (a, b)
 replace original [] = original
@@ -60,11 +60,13 @@ add_if_not_exist : Eq a => (a, b) -> List (a, b) -> List (a, b)
 add_if_not_exist (k, v) headers = if any (\(k', v') => k' == k) headers then headers else (k, v) :: headers
 
 export
-request' : {e : _} -> HttpClient e -> Method -> URL -> List (String, String) ->
-           Nat -> (() -> Stream (Of Bits8) IO (Either e ())) -> IO (ResponseHeadersAndBody e)
+request' : {e : _} -> HttpClient e -> Method -> URL -> List (String, String)
+  -> (length: Nat)
+  -> (input : Stream (Of Bits8) IO (Either e ()))
+  -> IO (ResponseHeadersAndBody e)
 request' client method url headers payload_size payload = do
   let Just protocol = protocol_from_str url.protocol
-  | Nothing => pure $ Left $ Left (UnknownProtocol url.protocol)
+  | Nothing => pure $ Left (UnknownProtocol url.protocol)
 
   cookies_jar <- readIORef client.cookie_jar
 
@@ -75,7 +77,7 @@ request' client method url headers payload_size payload = do
         add_if_not_exist ("Cookie", join "; " $ map serialize_cookie_no_attr cookies_jar.cookies) $ headers
 
   let message = MkRawHttpMessage method (show url.path <+> url.extensions) headers_with_missing_info
-  Right (response, content) <- start_request {m=IO} client.pool_manager protocol message (payload ())
+  Right (response, content) <- start_request {m=IO} client.pool_manager protocol message payload
   | Left err => pure $ Left err
 
   when client.store_cookie $ do
@@ -85,7 +87,7 @@ request' client method url headers payload_size payload = do
   if (client.follow_redirect && (Redirection == status_code_class response.status_code.snd))
     then do
       let Just location = lookup_header response.headers Location
-      | Nothing => pure (Left $ Left $ MissingHeader "Location")
+      | Nothing => pure (Left $ MissingHeader "Location")
 
       -- discard responded content to make way for another request
       consume content
@@ -98,7 +100,7 @@ interface Bytestream (a : Type) where
   to_stream : Monad m => a -> (Nat, Stream (Of Bits8) m ())
 
 export
-Bytestream () where 
+Bytestream () where
   to_stream () = (0, pure ())
 
 export
@@ -106,11 +108,11 @@ Bytestream (List Bits8) where
   to_stream list = (length list, fromList_ list)
 
 export
-Bytestream String where 
+Bytestream String where
   to_stream = to_stream . utf8_unpack
 
 export
 request : {e,a : _} -> Bytestream a => HttpClient e -> Method -> URL -> List (String, String) -> a -> IO (ResponseHeadersAndBody e)
 request  client method url headers payload =
   let (len, stream) = to_stream payload
-  in request' client method url headers len (\() => map Right stream)
+  in request' client method url headers len (map Right stream)

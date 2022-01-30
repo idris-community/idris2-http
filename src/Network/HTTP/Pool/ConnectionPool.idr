@@ -71,7 +71,7 @@ pool_new_worker_id pool = do
   c <- readIORef pool.counter
   pure $ (shiftL (cast r) 32) .|. cast c
 
-find_or_create_pool : RawHttpMessage -> PoolManager e -> IO (Either HttpError (Hostname, Pool e))
+find_or_create_pool : RawHttpMessage -> PoolManager e -> IO (Either (HttpError e) (Hostname, Pool e))
 find_or_create_pool message manager = do
   pools <- readIORef manager.pools
   case lookup_header message.headers Host of
@@ -107,7 +107,7 @@ close_pool cond pool = do
   let queue = pool.scheduled
   remaining <- mapMaybe (\case Request x => Just x; _ => Nothing) <$> recv_all queue
   -- feed all awaiting requests with errors
-  traverse_ (flip channelPut (Left $ Left ConnectionClosed) . response) remaining
+  traverse_ (flip channelPut (Left ConnectionClosed) . response) remaining
 
   -- close all sockets
   workers <- readIORef pool.workers
@@ -137,7 +137,7 @@ pools_last_called manager = do
     t <- readIORef pool.last_called
     pure (t, pool)
 
-spawn_worker : {e : _} -> Queue (Event e) -> (HttpError -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> Hostname -> Pool e -> IO ()
+spawn_worker : {e : _} -> Queue (Event e) -> (HttpError e -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> Hostname -> Pool e -> IO ()
 spawn_worker fetcher throw cert_check protocol hostname pool = do
   worker_id <- pool_new_worker_id pool
   Right sock <- socket AF_INET Stream 0
@@ -164,7 +164,7 @@ min_by compare (x ::: xs) = loop x xs where
 export
 {e : _} -> Scheduler e IO (PoolManager e) where
   schedule_request manager protocol request = do
-    let throw = \err => channelPut request.response (Left $ Left err)
+    let throw = \err => channelPut request.response (Left err)
     Right (host, pool) <- find_or_create_pool request.raw_http_message manager
     | Left err => throw err
 
