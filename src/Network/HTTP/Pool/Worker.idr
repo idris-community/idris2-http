@@ -32,18 +32,18 @@ import Utils.Queue
 -- needed for some reason
 %hide Network.Socket.close
 
-WriteOkOrError : Type -> Type -> Type
-WriteOkOrError t_ok t_closed = Res Bool $ \ok => if ok then Handle' t_ok t_closed else Res HttpError (const t_closed)
+WriteOkOrError : Type -> Type -> Type -> Type
+WriteOkOrError e t_ok t_closed = Res Bool $ \ok => if ok then Handle' t_ok t_closed else Res (HttpError e) (const t_closed)
 
 LogicOkOrError : Type -> Type -> Type
 LogicOkOrError t_ok t_closed = Res Bool $ \ok => if ok then Handle' t_ok t_closed else t_closed
 
-worker_write : (1 _ : Handle' t_ok t_closed) -> Integer -> Stream (Of (List Bits8)) IO (Either e ()) -> L1 IO (WriteOkOrError t_ok t_closed)
+worker_write : (1 _ : Handle' t_ok t_closed) -> Integer -> Stream (Of (List Bits8)) IO (Either e ()) -> L1 IO (WriteOkOrError e t_ok t_closed)
 worker_write handle remaining stream = do
   Right (chunk, rest) <- liftIO1 $ next stream
   | Left (Left r) => do
     handle <- close handle
-    pure1 (False # ((SocketError "error while writing to server") # handle))
+    pure1 (False # ((OtherReason r) # handle))
   | Left (Right ()) => if remaining <= 0 then pure1 (True # handle) else do
     handle <- close handle
     pure1 (False # ((ContentLengthMismatch remaining) # handle))
@@ -60,7 +60,7 @@ worker_finish _ handle = do
   handle <- close handle
   pure1 (False # handle)
 
-worker_read_fixed_length : (1 _ : Handle' t_ok t_closed) -> Integer -> Integer -> Channel (Either (Either HttpError e) (Maybe (List Bits8))) ->
+worker_read_fixed_length : (1 _ : Handle' t_ok t_closed) -> Integer -> Integer -> Channel (Either (HttpError e) (Maybe (List Bits8))) ->
                            L1 IO (LogicOkOrError t_ok t_closed)
 worker_read_fixed_length handle remaining chunk_size channel =
   if remaining <= 0
@@ -71,21 +71,21 @@ worker_read_fixed_length handle remaining chunk_size channel =
     let should_read = min remaining chunk_size
     (True # (content # handle)) <- read handle (integerToNat should_read)
     | (False # (error # handle)) => do
-      liftIO1 $ channelPut channel (Left $ Left $ SocketError "error while reading response: \{error}")
+      liftIO1 $ channelPut channel (Left $ SocketError "error while reading response: \{error}")
       pure1 (False # handle)
     liftIO1 $ channelPut channel (Right $ Just content)
     worker_read_fixed_length handle (remaining - should_read) chunk_size channel
 
-worker_read_chunked_end : (1 _ : Handle' t_ok t_closed) -> Channel (Either (Either HttpError e) (Maybe (List Bits8))) ->
+worker_read_chunked_end : (1 _ : Handle' t_ok t_closed) -> Channel (Either (HttpError e) (Maybe (List Bits8))) ->
                           L1 IO (LogicOkOrError t_ok t_closed)
 worker_read_chunked_end handle channel = do
   (True # ([char] # handle)) <- read handle 1
   | (True # (char # handle)) => do
     handle' <- close handle
-    liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed, somehow read returns \{show (length char)} bytes instead of 1")
+    liftIO1 $ channelPut channel (Left $ SocketError "read chunked body failed, somehow read returns \{show (length char)} bytes instead of 1")
     pure1 (False # handle')
   | (False # (error # handle)) => do
-    liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed: \{error}")
+    liftIO1 $ channelPut channel (Left $ SocketError "read chunked body failed: \{error}")
     pure1 (False # handle)
   case cast {to=Char} char of
     '\n' =>
@@ -94,27 +94,27 @@ worker_read_chunked_end handle channel = do
       (True # ([10] # handle)) <- read handle 1
       | (True # ([char] # handle)) => do
         handle' <- close handle
-        liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed, \\n expected after \\r, got \{show char} instead")
+        liftIO1 $ channelPut channel (Left $ SocketError "read chunked body failed, \\n expected after \\r, got \{show char} instead")
         pure1 (False # handle')
       | (True # (char # handle)) => do
         handle' <- close handle
-        liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed, somehow read returns \{show (length char)} bytes instead of 1")
+        liftIO1 $ channelPut channel (Left $ SocketError "read chunked body failed, somehow read returns \{show (length char)} bytes instead of 1")
         pure1 (False # handle')
       | (False # (error # handle)) => do
-        liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body failed: \{error}")
+        liftIO1 $ channelPut channel (Left $ SocketError "read chunked body failed: \{error}")
         pure1 (False # handle)
       pure1 (True # handle)
     chr => do
       handle <- close handle
-      liftIO1 $ channelPut channel (Left $ Left $ SocketError "read chunked body tail failed: got \{show chr} instead of \\n or \\r")
+      liftIO1 $ channelPut channel (Left $ SocketError "read chunked body tail failed: got \{show chr} instead of \\n or \\r")
       pure1 (False # handle)
 
-worker_read_chunked : (1 _ : Handle' t_ok t_closed) -> Channel (Either (Either HttpError e) (Maybe (List Bits8))) ->
+worker_read_chunked : (1 _ : Handle' t_ok t_closed) -> Channel (Either (HttpError e) (Maybe (List Bits8))) ->
                       L1 IO (LogicOkOrError t_ok t_closed)
 worker_read_chunked handle channel = do
   (True # (length_line # handle)) <- read_line handle
   | (False # (error # handle)) => do
-    liftIO1 $ channelPut channel (Left $ Left $ SocketError "error while reading response: \{error}")
+    liftIO1 $ channelPut channel (Left $ SocketError "error while reading response: \{error}")
     pure1 (False # handle)
   let Just (S len) = stringToNat 16 $ toLower length_line
   | Just Z => do
@@ -122,11 +122,11 @@ worker_read_chunked handle channel = do
     worker_read_chunked_end handle channel
   | Nothing => do
     handle <- close handle
-    liftIO1 $ channelPut channel (Left $ Left $ SocketError "invalid chunked header: \{length_line}")
+    liftIO1 $ channelPut channel (Left $ SocketError "invalid chunked header: \{length_line}")
     pure1 (False # handle)
   (True # (content # handle)) <- read handle (S len)
   | (False # (error # handle)) => do
-    liftIO1 $ channelPut channel (Left $ Left $ SocketError "error while reading chunked body: \{error}")
+    liftIO1 $ channelPut channel (Left $ SocketError "error while reading chunked body: \{error}")
     pure1 (False # handle)
 
   liftIO1 $ channelPut channel (Right $ Just content)
@@ -134,7 +134,7 @@ worker_read_chunked handle channel = do
 
 worker_logic : {e : _} -> ScheduleRequest e IO -> (1 _ : Handle' t_ok t_closed) -> L1 IO (LogicOkOrError t_ok t_closed)
 worker_logic request handle = do
-  let throw = \err => channelPut request.response (Left $ Left err)
+  let throw = \err => channelPut request.response (Left err)
 
   let http_message = request.raw_http_message
   let Just content_length = lookup_header http_message.headers ContentLength
@@ -161,7 +161,7 @@ worker_logic request handle = do
     pure1 (False # handle)
   let connection_action = lookup_header response.headers Connection
 
-  channel <- liftIO1 (makeChannel {a=(Either (Either HttpError e) (Maybe (List Bits8)))})
+  channel <- liftIO1 (makeChannel {a=(Either (HttpError e) (Maybe (List Bits8)))})
   let schedule_response = MkScheduleResponse response channel
   liftIO1 $ channelPut request.response (Right schedule_response)
 
@@ -175,7 +175,7 @@ worker_logic request handle = do
       let Just content_length = lookup_header response.headers ContentLength
       | Nothing => do
         handle <- close handle
-        liftIO1 $ channelPut channel (Left $ Left $ MissingHeader "Content-Length")
+        liftIO1 $ channelPut channel (Left $ MissingHeader "Content-Length")
         pure1 (False # handle)
       (True # handle) <- worker_read_fixed_length handle content_length 0x2000 channel
       | (False # handle) => pure1 (False # handle)
@@ -197,7 +197,7 @@ worker_loop idle_ref closer queue handle = do
   worker_loop idle_ref closer queue handle
 
 export
-worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Queue (Event e) -> (HttpError -> IO ()) ->
+worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Queue (Event e) -> (HttpError e -> IO ()) ->
                 (String -> CertificateCheck IO) -> Protocol -> String -> IO ()
 worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostname = LIO.run $ do
   let handle = socket_to_handle socket
