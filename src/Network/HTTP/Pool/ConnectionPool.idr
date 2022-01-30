@@ -15,12 +15,13 @@ import Network.TLS.Verify
 import Network.Socket
 import Data.IORef
 import Data.Bits
+import Data.List
 import Data.List1
 import System
 import System.Random
 import System.Future
 import System.Concurrency
-import System.Concurrency.BufferedChannel
+import Utils.Queue
 
 mutual
   record Pool (e : Type) where
@@ -28,9 +29,7 @@ mutual
     workers : IORef (List (Worker e))
     ||| Increase everytime there is a new worker
     counter : IORef Bits32
-    scheduled : IORef (BufferedChannel (Event e))
-    sender : Sender e
-    fetcher : Fetcher e
+    scheduled : Queue (Event e)
     last_called : IORef Integer
 
   export
@@ -81,13 +80,7 @@ find_or_create_pool message manager = do
         Just pool =>
           pure (Right (host, pool))
         Nothing => do
-          workers <- newIORef []
-          counter <- newIORef 0
-          buffer <- makeBufferedChannel
-          sender <- becomeSender buffer
-          fetcher <- becomeReceiver Blocking buffer
-          last_called <- time >>= newIORef
-          let pool = MkPool workers counter buffer sender fetcher last_called
+          pool <- pure $ MkPool !(newIORef []) !(newIORef 0) !(mk_queue) !(time >>= newIORef)
           modifyIORef manager.pools ((host, pool) ::)
           pure (Right (host, pool))
     Nothing => pure (Left UnknownHost)
@@ -111,8 +104,8 @@ close_worker worker = do
 
 close_pool : {e : _} -> Condition -> Pool e -> IO ()
 close_pool cond pool = do
-  buffer_reader <- becomeReceiver NonBlocking pool.scheduled
-  remaining <- get_all_remaining_requests buffer_reader 0 []
+  let queue = pool.scheduled
+  remaining <- mapMaybe (\case Request x => Just x; _ => Nothing) <$> recv_all queue
   -- feed all awaiting requests with errors
   traverse_ (flip channelPut (Left $ Left ConnectionClosed) . response) remaining
 
@@ -120,21 +113,8 @@ close_pool cond pool = do
   workers <- readIORef pool.workers
   traverse_ (close . socket) workers
 
-  -- spam kill events
-  let kills = List.replicate (2 * length workers) (the (Event e) (Kill $ Just cond))
-  let (bc ** buffer) = pool.sender
-  traverse_ {t=List} (buffer Signal bc) kills
-  where
-    get_all_remaining_requests : (dc : BufferedChannel (Event e) ** (NonBlockingReceiver (Event e)))
-                                  -> Integer
-                                  -> List (ScheduleRequest e IO)
-                                  -> IO (List (ScheduleRequest e IO))
-    get_all_remaining_requests (channel ** recv) tries acc =
-      -- Try extra 5 times just in case
-      if tries >= 5 then pure acc else do
-        Just (Request x) <- recv channel
-        | _ => get_all_remaining_requests (channel ** recv) (tries + 1) acc
-        get_all_remaining_requests (channel ** recv) 0 (x :: acc)
+  -- broadcast kill event
+  broadcast queue (Kill $ Just cond)
 
 wait_for_worker_close : {e : _} -> Mutex -> Condition -> List (Pool e) -> IO ()
 wait_for_worker_close mutex cond pools = do
@@ -157,7 +137,7 @@ pools_last_called manager = do
     t <- readIORef pool.last_called
     pure (t, pool)
 
-spawn_worker : {e : _} -> Fetcher e -> (HttpError -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> Hostname -> Pool e -> IO ()
+spawn_worker : {e : _} -> Queue (Event e) -> (HttpError -> IO ()) -> (String -> CertificateCheck IO) -> Protocol -> Hostname -> Pool e -> IO ()
 spawn_worker fetcher throw cert_check protocol hostname pool = do
   worker_id <- pool_new_worker_id pool
   Right sock <- socket AF_INET Stream 0
@@ -187,12 +167,11 @@ export
     let throw = \err => channelPut request.response (Left $ Left err)
     Right (host, pool) <- find_or_create_pool request.raw_http_message manager
     | Left err => throw err
-  
+
     -- update last called
     time >>= writeIORef pool.last_called
 
-    let (bc ** buffer) = pool.sender
-    buffer Signal bc $ Request request
+    signal pool.scheduled $ Request request
 
     {-
     1. if total connection is maxed and no local connection
@@ -214,14 +193,13 @@ export
       let Just pools_to_kill = fromList pools_to_kill
       | Nothing => pure () -- why is pool empty
 
-      let pool_to_kill = min_by (\a,b => compare (fst a) (fst b)) pools_to_kill
-      let (bc_to_kill ** buffer_to_kill) = pool.sender
-      buffer_to_kill Signal bc_to_kill (Kill Nothing)
-      _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
+      let (_, pool_to_kill) = min_by (\a,b => compare (fst a) (fst b)) pools_to_kill
+      signal pool_to_kill.scheduled (Kill Nothing)
+      _ <- forkIO $ spawn_worker pool.scheduled throw manager.certificate_checker protocol host pool
       pure ()
 
     when {f=IO} second_condition $ do
-      _ <- forkIO $ spawn_worker pool.fetcher throw manager.certificate_checker protocol host pool
+      _ <- forkIO $ spawn_worker pool.scheduled throw manager.certificate_checker protocol host pool
       pure ()
 
   evict_all manager = do

@@ -46,6 +46,17 @@ recv' (Q mutex ref) = liftIO $ do
       mutexRelease mutex
       pure Nothing
 
+||| receive all the messages waiting to be processed
+export
+recv_all : HasIO io => Queue a -> io (List a)
+recv_all (Q mutex ref) = liftIO $ do
+  mutexAcquire mutex
+  queue <- readIORef ref
+  let (msgs, others) = spanBy (\case Msg msg => Just msg; _ => Nothing) (toList queue)
+  writeIORef ref (fromList others)
+  mutexRelease mutex
+  pure msgs
+
 ||| send a message to one of the receiver
 export
 signal : HasIO io => Queue a -> a -> io ()

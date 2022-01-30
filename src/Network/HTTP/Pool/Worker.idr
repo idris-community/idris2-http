@@ -23,9 +23,11 @@ import Data.Nat
 import Data.Fin
 import Data.String
 import System.Concurrency
-import System.Concurrency.BufferedChannel
 import Control.Linear.LIO
 import Network.HTTP.Pool.IOStuff
+import Data.List
+import Data.IORef
+import Utils.Queue
 
 -- needed for some reason
 %hide Network.Socket.close
@@ -179,10 +181,10 @@ worker_logic request handle = do
       | (False # handle) => pure1 (False # handle)
       worker_finish connection_action handle
 
-worker_loop : {e : _} -> IORef Bool -> IO () -> Fetcher e -> (1 _ : Handle' t_ok ()) -> L IO ()
-worker_loop idle_ref closer (channel ** receiver) handle = do
+worker_loop : {e : _} -> IORef Bool -> IO () -> Queue (Event e) -> (1 _ : Handle' t_ok ()) -> L IO ()
+worker_loop idle_ref closer queue handle = do
   liftIO1 $ writeIORef idle_ref True
-  Request request <- liftIO1 $ receiver channel
+  Request request <- liftIO1 $ recv queue
   | Kill condition => do
     close handle
     liftIO1 closer
@@ -192,10 +194,10 @@ worker_loop idle_ref closer (channel ** receiver) handle = do
   liftIO1 $ writeIORef idle_ref False
   (True # handle) <- worker_logic request handle
   | (False # ()) => liftIO1 closer
-  worker_loop idle_ref closer (channel ** receiver) handle
+  worker_loop idle_ref closer queue handle
 
 export
-worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Fetcher e -> (HttpError -> IO ()) ->
+worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Queue (Event e) -> (HttpError -> IO ()) ->
                 (String -> CertificateCheck IO) -> Protocol -> String -> IO ()
 worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostname = LIO.run $ do
   let handle = socket_to_handle socket
