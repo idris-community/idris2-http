@@ -91,3 +91,29 @@ test_close_without_read = do
   putStrLn "response header received"
   printLn response
   close client
+
+test_json_gzip : IO ()
+test_json_gzip = do
+  client <- new_client certificate_ignore_check 25 5 True True
+  putStrLn "sending request"
+  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/gzip") [] ()
+  | Left err => close client *> printLn err
+  putStrLn "response header received"
+  printLn response
+  Right content <- runEitherT $ toList_ content
+  | Left err => close client *> printLn err
+  putStrLn $ maybe "Nothing" id $ utf8_pack $ content
+  close client
+
+test_json_deflate : IO ()
+test_json_deflate = do
+  client <- new_client certificate_ignore_check 25 5 True True
+  putStrLn "sending request"
+  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/deflate") [] ()
+  | Left err => close client *> printLn err
+  putStrLn "response header received"
+  printLn response
+  Right content <- runEitherT $ toList_ content
+  | Left err => close client *> printLn err
+  putStrLn $ maybe "Nothing" id $ utf8_pack $ content
+  close client

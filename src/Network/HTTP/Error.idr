@@ -13,6 +13,7 @@ data HttpError e
   | ContentLengthMismatch Integer
   | MissingHeader String
   | UnknownTransferEncoding String
+  | DecompressionError String
   | OtherReason e
 
 %runElab derive "HttpError" [Generic, Meta, Eq, Show]

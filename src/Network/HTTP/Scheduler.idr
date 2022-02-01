@@ -3,8 +3,13 @@ module Network.HTTP.Scheduler
 import Network.HTTP.Message
 import Network.HTTP.Error
 import Network.HTTP.Protocol
+import Network.HTTP.Header
 import Utils.Streaming
 import System.Concurrency
+import Data.List1
+import Data.Compress.Interface
+import Data.Compress.GZip
+import Data.Compress.Inflate
 
 public export
 record ScheduleResponse (e : Type) (m : Type -> Type) where
@@ -26,13 +31,28 @@ interface Scheduler (e : Type) (m : Type -> Type) (0 a : Type) where
   ||| Evict all HTTP connections, returning scheduler to a clean state (and closing all resources)
   evict_all : a -> m ()
 
-channel_to_stream : HasIO m => Channel (Either (HttpError e) (Maybe (List Bits8))) ->
+channel_to_stream : (HasIO m, Decompressor c) => c -> Channel (Either (HttpError e) (Maybe (List Bits8))) ->
                     Stream (Of Bits8) m (Either (HttpError e) ())
-channel_to_stream channel = do
+channel_to_stream decomp channel = do
   Right (Just content) <- liftIO $ channelGet channel
-  | Right Nothing => pure (Right ())
+  | Right Nothing =>
+      case done decomp of
+        Right [] => pure (Right ())
+        Right xs => pure (Left $ DecompressionError "\{show $ length xs} leftover bytes in decompression buffer")
+        Left err => pure (Left $ DecompressionError err)
   | Left err => pure (Left err)
-  fromList_ content *> channel_to_stream channel
+  let Right (content, decomp) = feed decomp content
+  | Left err => pure (Left $ DecompressionError err)
+  fromList_ content *> channel_to_stream decomp channel
+
+decompressor : List ContentEncodingScheme -> DPair Type Decompressor
+decompressor [ GZip ] = MkDPair GZipState %search
+decompressor [ Deflate ] = MkDPair InflateState %search
+decompressor _ = MkDPair IdentityState %search
+
+to_list : Maybe (List1 a) -> List a
+to_list Nothing = []
+to_list (Just (x ::: xs)) = x :: xs
 
 public export
 start_request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
@@ -46,4 +66,5 @@ start_request scheduler protocol msg content = do
   schedule_request scheduler protocol $ MkScheduleRequest msg content mvar
   Right response <- channelGet mvar
   | Left err => pure $ Left err
-  pure $ Right (response.raw_http_response, channel_to_stream response.content)
+  let (encoding ** wit) = decompressor $ to_list $ lookup_header response.raw_http_response.headers ContentEncoding
+  pure $ Right (response.raw_http_response, channel_to_stream (init @{wit}) response.content)
