@@ -13,17 +13,18 @@ import Utils.String
 %language ElabReflection
 
 public export
-data Header : Type where
-  Host : Header
-  ContentType : Header
-  Accept : Header
-  Cookie : Header
-  SetCookie : Header
-  ContentLength : Header
-  Connection : Header
-  TransferEncoding : Header
-  Location : Header
-  Unknown : String -> Header
+data Header
+  = Host
+  | ContentType
+  | Accept
+  | Cookie
+  | SetCookie
+  | ContentLength
+  | Connection
+  | TransferEncoding
+  | ContentEncoding
+  | Location
+  | Unknown String
 
 %runElab derive "Header" [Generic, Meta, Eq, DecEq, Ord, Show]
 
@@ -35,11 +36,16 @@ data ConnectionAction : Type where
 public export
 data TransferEncodingScheme : Type where
   Chunked : TransferEncodingScheme
-  UnknownScheme : String -> TransferEncodingScheme
-  -- add others like gzip in the future
+  Identity : TransferEncodingScheme
+
+public export
+data ContentEncodingScheme : Type where
+  GZip : ContentEncodingScheme
+  Deflate : ContentEncodingScheme
 
 %runElab derive "ConnectionAction" [Generic, Meta, Eq, DecEq, Ord, Show]
 %runElab derive "TransferEncodingScheme" [Generic, Meta, Eq, DecEq, Ord, Show]
+%runElab derive "ContentEncodingScheme" [Generic, Meta, Eq, DecEq, Ord, Show]
 
 public export
 header_value_type : Header -> Type
@@ -48,6 +54,7 @@ header_value_type Cookie = List (String, String)
 header_value_type Host = Hostname
 header_value_type Connection = ConnectionAction
 header_value_type TransferEncoding = List1 TransferEncodingScheme
+header_value_type ContentEncoding = List1 ContentEncodingScheme
 header_value_type SetCookie = Cookie
 header_value_type _ = String
 
@@ -56,6 +63,7 @@ header_key_name : Header -> String
 header_key_name ContentType = "Content-Type"
 header_key_name ContentLength = "Content-Length"
 header_key_name TransferEncoding = "Transfer-Encoding"
+header_key_name ContentEncoding = "Content-Encoding"
 header_key_name SetCookie = "Set-Cookie"
 header_key_name (Unknown x) = x
 header_key_name x = show x
@@ -71,6 +79,7 @@ key_name_to_header x =
     "content-length" => ContentLength
     "connection" => Connection
     "transfer-encoding" => TransferEncoding
+    "content-encoding" => ContentEncoding
     "set-cookie" => SetCookie
     x => Unknown x
 
@@ -94,6 +103,14 @@ header_parse_value TransferEncoding = traverse parse_transfer_encoding . split (
   parse_transfer_encoding x =
     case toLower $ trim x of
       "chunked" => Just Chunked
+      "identity" => Just Identity
+      _ => Nothing
+header_parse_value ContentEncoding = traverse parse_content_encoding . split (',' ==) where
+  parse_content_encoding : String -> Maybe ContentEncodingScheme
+  parse_content_encoding x =
+    case toLower $ trim x of
+      "gzip" => Just GZip
+      "deflate" => Just Deflate
       _ => Nothing
 
 export
@@ -107,10 +124,8 @@ header_write_value ContentLength = show
 header_write_value (Unknown x) = id
 header_write_value Connection = \case KeepAlive => "keep-alive"; Close => "close"
 header_write_value SetCookie = serialize_cookie
-header_write_value TransferEncoding = join ", " . map write_transfer_encoding where
-  write_transfer_encoding : TransferEncodingScheme -> String
-  write_transfer_encoding (UnknownScheme x) = x
-  write_transfer_encoding x = toLower $ show x
+header_write_value TransferEncoding = join ", " . map (toLower . show)
+header_write_value ContentEncoding = join ", " . map (toLower . show)
 
 export
 Show (DPair Header $ \h => header_value_type h) where
