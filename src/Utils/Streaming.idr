@@ -70,6 +70,10 @@ export
 inspect : (Functor f, Monad m) => Stream f m r -> m (Either r (f (Stream f m r)))
 inspect = destroy (pure . (Right . map (effect {f} {m} . map (either Return wrap)))) join (pure . Left)
 
+export
+hoist : (Functor f, Monad m) => (forall a. m a -> n a) -> Stream f m r -> Stream f n r
+hoist f = fold Return (\x => Effect $ f x) (\x => Step x)
+
 public export
 (Functor f, Monad m) => Functor (Stream f m) where
   map f x = Build (\return, effect, step => fold (return . f) effect step x)

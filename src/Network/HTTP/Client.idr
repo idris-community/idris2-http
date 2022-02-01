@@ -16,6 +16,9 @@ import Network.TLS.Signature
 import Utils.Streaming
 import Utils.String
 import Utils.Bytes
+import Control.Monad.Error.Either
+import Control.Monad.Error.Interface
+import Control.Monad.Trans
 import Data.String
 import Data.String.Extra
 import Data.Nat
@@ -45,10 +48,6 @@ new_client cert_checker max_total_connection max_per_site_connection store_cooki
   jar <- newIORef $ MkCookieJar []
   pure $ MkHttpClient jar store_cookie follow_redirect manager
 
-public export
-ResponseHeadersAndBody : Type -> Type
-ResponseHeadersAndBody e = Either (HttpError e) (HttpResponse, Stream (Of Bits8) IO (Either (HttpError e) ()))
-
 replace : Eq a => List (a, b) -> List (a, b) -> List (a, b)
 replace original [] = original
 replace original ((k, v) :: xs) = replace (loop [] original k v) xs where
@@ -59,16 +58,26 @@ replace original ((k, v) :: xs) = replace (loop [] original k v) xs where
 add_if_not_exist : Eq a => (a, b) -> List (a, b) -> List (a, b)
 add_if_not_exist (k, v) headers = if any (\(k', v') => k' == k) headers then headers else (k, v) :: headers
 
+unwrap : Functor f => Stream f (EitherT e IO) a -> Stream f IO (Either e a)
+unwrap = fold (Return . Right) (go . runEitherT) (\x => Step x) where
+  go : IO (Either e (Stream f IO (Either e a))) -> ?
+  go stream = case !(lift stream) of
+    Left err => Return (Left err)
+    Right stream => stream
+
+wrap : (Functor f, MonadError e m) => HasIO m => Stream f IO (Either e ()) -> Stream f m ()
+wrap = fold (\case Right a => Return a; Left a => Effect $ throwError a) (Effect . delay . liftIO) (\x => Step x)
+
 export
-request' : {e : _} -> HttpClient e -> Method -> URL -> List (String, String)
+request' : {e,m : _} -> MonadError (HttpError e) m => HasIO m => HttpClient e -> Method -> URL -> List (String, String)
   -> (length: Nat)
-  -> (input : Stream (Of Bits8) IO (Either e ()))
-  -> IO (ResponseHeadersAndBody e)
+  -> (input : Stream (Of Bits8) (EitherT e IO) ())
+  -> m (HttpResponse, Stream (Of Bits8) m ())
 request' client method url headers payload_size payload = do
   let Just protocol = protocol_from_str url.protocol
-  | Nothing => pure $ Left (UnknownProtocol url.protocol)
+  | Nothing => throwError (UnknownProtocol url.protocol)
 
-  cookies_jar <- readIORef client.cookie_jar
+  cookies_jar <- liftIO $ readIORef client.cookie_jar
 
   let headers_with_missing_info =
         add_if_not_exist ("Host", hostname_string url.host) .
@@ -77,23 +86,23 @@ request' client method url headers payload_size payload = do
         add_if_not_exist ("Cookie", join "; " $ map serialize_cookie_no_attr cookies_jar.cookies) $ headers
 
   let message = MkRawHttpMessage method (show url.path <+> url.extensions) headers_with_missing_info
-  Right (response, content) <- start_request {m=IO} client.pool_manager protocol message payload
-  | Left err => pure $ Left err
+  Right (response, content) <- liftIO $ start_request {m=IO} client.pool_manager protocol message (unwrap payload)
+  | Left err => throwError err
 
   when client.store_cookie $ do
     let cookies = lookup_headers response.headers SetCookie
-    modifyIORef client.cookie_jar (\og => foldl add_cookie og cookies)
+    liftIO $ modifyIORef client.cookie_jar (\og => foldl add_cookie og cookies)
 
   if (client.follow_redirect && (Redirection == status_code_class response.status_code.snd))
     then do
       let Just location = lookup_header response.headers Location
-      | Nothing => pure (Left $ MissingHeader "Location")
+      | Nothing => throwError (MissingHeader "Location")
 
       -- discard responded content to make way for another request
-      consume content
+      liftIO $ consume content
       request' client method (add url location) headers payload_size payload
     else
-      pure $ Right (response, content)
+      pure $ map wrap (response, content)
 
 public export
 interface Bytestream (a : Type) where
@@ -112,7 +121,10 @@ Bytestream String where
   to_stream = to_stream . utf8_unpack
 
 export
-request : {e,a : _} -> Bytestream a => HttpClient e -> Method -> URL -> List (String, String) -> a -> IO (ResponseHeadersAndBody e)
-request  client method url headers payload =
-  let (len, stream) = to_stream payload
-  in request' client method url headers len (map Right stream)
+request : {e,m,a : _} -> MonadError (HttpError e) m => HasIO m => Bytestream a =>
+          HttpClient e -> Method -> URL -> List (String, String) ->
+          a ->
+          m (HttpResponse, Stream (Of Bits8) m ())
+request client method url headers payload =
+  let (len, stream) = to_stream {m=EitherT e IO} payload
+  in request' client method url headers len stream
