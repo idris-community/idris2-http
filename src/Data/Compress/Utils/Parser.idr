@@ -226,6 +226,10 @@ p_nat : Semigroup e => (n : Nat) -> Parser (List Bits8) e Nat
 p_nat n = cast {to = Nat} . le_to_integer <$> count n token
 
 export
+p_be_nat : Semigroup e => (n : Nat) -> Parser (List Bits8) e Nat
+p_be_nat n = cast {to = Nat} . le_to_integer . reverse <$> count n token
+
+export
 le_nat : Semigroup e => (n : Nat) -> Parser Bitstream e Nat
 le_nat n = cast {to = Nat} . le_to_integer <$> count n bit_getbyte
 
