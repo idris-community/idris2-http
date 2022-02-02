@@ -9,7 +9,7 @@ import System.Concurrency
 import Data.List1
 import Data.Compress.Interface
 import Data.Compress.GZip
-import Data.Compress.Inflate
+import Data.Compress.ZLib
 
 public export
 record ScheduleResponse (e : Type) (m : Type -> Type) where
@@ -47,7 +47,7 @@ channel_to_stream decomp channel = do
 
 decompressor : List ContentEncodingScheme -> DPair Type Decompressor
 decompressor [ GZip ] = MkDPair GZipState %search
-decompressor [ Deflate ] = MkDPair InflateState %search
+decompressor [ Deflate ] = MkDPair ZLibState %search
 decompressor _ = MkDPair IdentityState %search
 
 to_list : Maybe (List1 a) -> List a
