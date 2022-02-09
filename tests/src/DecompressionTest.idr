@@ -1,4 +1,4 @@
-module Test.Test
+module DecompressionTest
 
 import Data.Compress.GZip
 import Data.Compress.CRC
@@ -41,13 +41,16 @@ test_inflate_uncompressed : IO (Either String ())
 test_inflate_uncompressed = gzcat "test/random.bin.gz"
 
 test_inflate_fixed : IO (Either String ())
-test_inflate_fixed = gzcat "test/hello.gz"
+test_inflate_fixed = gzcat "tests/files/hello.gz"
 
 test_inflate_text : IO (Either String ())
-test_inflate_text = gzcat "test/jabberwock.txt.gz"
+test_inflate_text = gzcat "tests/files/jabberwock.txt.gz"
 
 test_inflate_jpg : IO (Either String ())
-test_inflate_jpg = gzcat "test/jabberwocky.jpg.gz"
+test_inflate_jpg = gzcat "tests/files/jabberwocky.jpg.gz"
+
+test_gzip_concated : IO (Either String ())
+test_gzip_concated = gzcat "tests/files/concatenated.gz"
 
 export
 test : IO ()

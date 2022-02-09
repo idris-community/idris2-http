@@ -1,4 +1,4 @@
-module Test.ClientTest
+module ClientTest
 
 import Network.HTTP
 import Network.HTTP.URL

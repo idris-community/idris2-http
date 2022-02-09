@@ -1,4 +1,4 @@
-module Test.QueueTest
+module QueueTest
 
 import Utils.Queue
 import System.Future
