@@ -34,7 +34,7 @@ toFile file = fold (pure . Right) join $ \(a :> b) => do
 
 test_redirect : IO ()
 test_redirect = do
-  client <- new_client certificate_ignore_check 25 5 True True
+  client <- new_client_default
   putStrLn "sending request"
   Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "http://openbsd.org/70.html") [] ()
   | Left err => close client *> printLn err
@@ -70,7 +70,7 @@ test_cookie = do
 
 test_post : IO ()
 test_post = do
-  client <- new_client certificate_ignore_check 25 5 True True
+  client <- new_client_default
   putStrLn "sending cookie set request"
   let body = "this is the body"
   Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client POST (url' "https://httpbin.org/post") [] body
@@ -84,7 +84,7 @@ test_post = do
 
 test_close_without_read : IO ()
 test_close_without_read = do
-  client <- new_client certificate_ignore_check 25 5 True True
+  client <- new_client_default
   putStrLn "sending request"
   Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "http://openbsd.org/70.html") [] ()
   | Left err => close client *> printLn err
@@ -94,7 +94,7 @@ test_close_without_read = do
 
 test_json_gzip : IO ()
 test_json_gzip = do
-  client <- new_client certificate_ignore_check 25 5 True True
+  client <- new_client_default
   putStrLn "sending request"
   Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/gzip") [] ()
   | Left err => close client *> printLn err
@@ -107,7 +107,7 @@ test_json_gzip = do
 
 test_json_deflate : IO ()
 test_json_deflate = do
-  client <- new_client certificate_ignore_check 25 5 True True
+  client <- new_client_default
   putStrLn "sending request"
   Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/deflate") [] ()
   | Left err => close client *> printLn err
