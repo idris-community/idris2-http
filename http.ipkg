@@ -14,5 +14,36 @@ depends = base      >= 0.5.1
         , elab-util >= 0.5.0
         , tls       >= 0.0.1
 
+modules = Data.Compress.CRC,
+          Data.Compress.GZip,
+          Data.Compress.Inflate,
+          Data.Compress.Huffman,
+          Data.Compress.Utils.Misc,
+          Data.Compress.Utils.Bytes,
+          Data.Compress.Utils.ConstantTable,
+          Data.Compress.Utils.FiniteBuffer,
+          Data.Compress.Utils.Parser,
+          Data.Compress.Interface,
+          Data.Compress.ZLib,
+          Network.HTTP.Header,
+          Network.HTTP.Status,
+          Network.HTTP.Method,
+          Network.HTTP.Message,
+          Network.HTTP.Client,
+          Network.HTTP.URL,
+          Network.HTTP.Error,
+          Network.HTTP.Cookie,
+          Network.HTTP.Scheduler,
+          Network.HTTP.Path,
+          Network.HTTP.Pool.Common,
+          Network.HTTP.Pool.ConnectionPool,
+          Network.HTTP.Pool.Worker,
+          Network.HTTP.Pool.IOStuff,
+          Network.HTTP.Protocol,
+          Network.HTTP,
+          Utils.Streaming,
+          Utils.String,
+          Utils.Queue
+
 opts = "-Wno-shadowing"
 sourcedir = "src"
