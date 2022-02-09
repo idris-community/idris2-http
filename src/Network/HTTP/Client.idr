@@ -12,6 +12,7 @@ import Network.HTTP.Path
 import Network.HTTP.Status
 import Network.HTTP.Cookie
 import Network.TLS
+import Network.TLS.Certificate.System
 import Network.TLS.Signature
 import Utils.Streaming
 import Utils.String
@@ -33,10 +34,21 @@ record HttpClient e where
   follow_redirect : Bool
   pool_manager : PoolManager e
 
+||| Close all existing connections in the HTTP client.
+||| A closed client can be reused again.
 export
 close : {e : _} -> HasIO io => HttpClient e -> io ()
 close client = liftIO $ evict_all {m=IO,e=e} $ client.pool_manager
 
+||| Creates a new HTTP client.
+||| Arguments:
+|||
+||| @ cert_checker the function used to verify the website's TLS certificate.
+|||                `certificate_check` and `certificate_ignore_check` are provided in `Network.TLS`.
+||| @ max_total_connection the maximum alive connections (per protocol) allowed
+||| @ max_per_site_connection the maximum alive connections (per protocol) per site allowed
+||| @ store_cookie whether the client should store received cookies
+||| @ follow_redirect whether the client should follow redirects according to response status codes
 export
 new_client : HasIO io => (String -> CertificateCheck IO) ->
              (max_total_connection : Nat) -> {auto 0 n01 : NonZero max_total_connection} ->
@@ -47,6 +59,19 @@ new_client cert_checker max_total_connection max_per_site_connection store_cooki
   manager <- new_pool_manager' max_per_site_connection max_total_connection cert_checker
   jar <- newIORef $ MkCookieJar []
   pure $ MkHttpClient jar store_cookie follow_redirect manager
+
+||| Create a new HTTP client with default configuration.
+||| This would also verify the website's TLS certificate with the system's trusted CAs.
+||| max_total_connection = 25
+||| max_per_site_connection = 5
+||| store_cookie = True
+||| follow_redirect = True
+export
+new_client_default : HasIO io => io (HttpClient e)
+new_client_default = do
+  Right certs <- liftIO get_system_trusted_certs
+  | Left err => assert_total $ idris_crash "error when trying to get system certificats, please report this issue."
+  new_client (certificate_check certs) 25 5 True True
 
 replace : Eq a => List (a, b) -> List (a, b) -> List (a, b)
 replace original [] = original
@@ -68,6 +93,16 @@ unwrap = fold (Return . Right) (go . runEitherT) (\x => Step x) where
 wrap : (Functor f, MonadError e m) => HasIO m => Stream f IO (Either e ()) -> Stream f m ()
 wrap = fold (\case Right a => Return a; Left a => Effect $ throwError a) (Effect . delay . liftIO) (\x => Step x)
 
+||| Send a HTTP request, returns a `HttpResponse` containing the status code and headers,
+||| and also a stream of the content body from the response.
+||| Arguments:
+|||
+||| @ client the HTTP client
+||| @ method the HTTP method, e.g. GET / POST
+||| @ url the URL to of the website to be connected to
+||| @ headers the HTTP headers, represented as a list of (key, value)
+||| @ length the length of the content to be sent
+||| @ input the stream of bytes to be sent, which should be at least `length` bytes
 export
 request' : {e,m : _} -> MonadError (HttpError e) m => HasIO m => HttpClient e -> Method -> URL -> List (String, String)
   -> (length: Nat)
@@ -120,6 +155,16 @@ export
 Bytestream String where
   to_stream = to_stream . utf8_unpack
 
+
+||| Send a HTTP request, returns a `HttpResponse` containing the status code and headers,
+||| and also a stream of the content body from the response.
+||| Arguments:
+|||
+||| @ client the HTTP client
+||| @ method the HTTP method, e.g. GET / POST
+||| @ url the URL to of the website to be connected to
+||| @ headers the HTTP headers, represented as a list of (key, value)
+||| @ payload the content payload of the request. Use () for empty content.
 export
 request : {e,m,a : _} -> MonadError (HttpError e) m => HasIO m => Bytestream a =>
           HttpClient e -> Method -> URL -> List (String, String) ->
