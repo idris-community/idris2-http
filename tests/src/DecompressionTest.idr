@@ -47,21 +47,26 @@ gzmd5_check expected_checksum filename = do
     else throwE "checksum error: expected \{expected_checksum}, got \{checksum_str}"
 
 -- Compressed data that is gzip + 1 single deflate uncompressed block
+export
 test_gzip_uncompressed : EitherT String IO ()
 test_gzip_uncompressed = gzmd5_check "66bd413f7a853c4fe78bddede9e8c5d7" "files/random.bin.gz"
 
 -- Compressed data using only fixed huffman encoding
+export
 test_gzip_fixed_huffman : EitherT String IO ()
 test_gzip_fixed_huffman = gzmd5_check "0eb38a55ee9ab4f5d3283f6a33e0529e" "files/hello.gz"
 
 -- General gzip compressed text
+export
 test_gzip_text : EitherT String IO ()
 test_gzip_text = gzmd5_check "00c77291948ef959cb472e2935ca8963" "files/jabberwock.txt.gz"
 
 -- General gzip compressed image
+export
 test_gzip_jpg : EitherT String IO ()
 test_gzip_jpg = gzmd5_check "3a8f86011336fa59fe49618a05d34b83" "files/jabberwocky.jpg.gz"
 
 -- Two gzip body concated into one file (allowed by the RFC for some reason)
+export
 test_gzip_concated : EitherT String IO ()
 test_gzip_concated = gzmd5_check "ffe16dc45c35a1c3a0aa40875eca747e" "files/concatenated.gz"
