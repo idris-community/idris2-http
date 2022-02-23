@@ -32,88 +32,82 @@ toFile file = fold (pure . Right) join $ \(a :> b) => do
     | Left err => pure (Left err)
   b
 
-test_redirect : IO ()
-test_redirect = do
-  client <- new_client_default
+with_client : {e : _} -> IO (HttpClient e) -> (HttpClient e -> EitherT (HttpError e) IO a) -> EitherT (HttpError e) IO a
+with_client client f = MkEitherT $ do
+  c <- client
+  Right ok <- runEitherT (f c)
+  | Left err => close c *> pure (Left err)
+  close c
+  pure (Right ok)
+
+map_error : Functor m => (e -> e') -> EitherT e m a -> EitherT e' m a
+map_error f = bimapEitherT f id
+
+export
+test_redirect : EitherT String IO ()
+test_redirect = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "http://openbsd.org/70.html") [] ()
-  | Left err => close client *> printLn err
+  (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] ()
   putStrLn "response header received"
   printLn response
   putStrLn "downloading response"
-  Right content <- runEitherT $ toList_ content
-  | Left err => close client *> printLn err
-  printLn $ utf8_pack $ content
-  close client
+  content <- toList_ content
+  printLn $ "\{show $ length content} bytes read"
 
-test_cookie : IO ()
-test_cookie = do
-  client <- new_client certificate_ignore_check 25 5 True False
+export
+test_cookie : EitherT String IO ()
+test_cookie = map_error show $ with_client {e=()} (new_client certificate_ignore_check 25 5 True False) $ \client => do
   putStrLn "sending cookie set request"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/cookies/set/sessioncookie/123456789") [] ()
-  | Left err => close client *> printLn err
+  (response, content) <- request client GET (url' "https://httpbin.org/cookies/set/sessioncookie/123456789") [] ()
   putStrLn "response header received"
   printLn response
-  Right content <- runEitherT $ toList_ content
-  | Left err => close client *> printLn err
+  content <- toList_ content
   printLn $ utf8_pack $ content
 
   putStrLn "sending cookie get request"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/cookies") [] ()
-  | Left err => close client *> printLn err
+  (response, content) <- request client GET (url' "https://httpbin.org/cookies") [] ()
   putStrLn "response header received"
   printLn response
-  Right content <- runEitherT $ toList_ content
-  | Left err => close client *> printLn err
+  content <- toList_ content
   printLn $ utf8_pack $ content
-  close client
 
-test_post : IO ()
-test_post = do
-  client <- new_client_default
+export
+test_post : EitherT String IO ()
+test_post = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending cookie set request"
   let body = "this is the body"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client POST (url' "https://httpbin.org/post") [] body
-  | Left err => close client *> printLn err
+  (response, content) <- request client POST (url' "https://httpbin.org/post") [] body
   putStrLn "response header received"
   printLn response
-  Right content <- runEitherT $ toList_ content
-  | Left err => close client *> printLn err
+  content <- toList_ content
   printLn $ utf8_pack $ content
-  close client
 
-test_close_without_read : IO ()
-test_close_without_read = do
-  client <- new_client_default
+export
+test_close_without_read : EitherT String IO ()
+test_close_without_read = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "http://openbsd.org/70.html") [] ()
-  | Left err => close client *> printLn err
+  (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] ()
   putStrLn "response header received"
   printLn response
-  close client
 
-test_json_gzip : IO ()
-test_json_gzip = do
-  client <- new_client_default
+export
+test_json_gzip : EitherT String IO ()
+test_json_gzip = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/gzip") [] ()
-  | Left err => close client *> printLn err
+  (response, content) <- request client GET (url' "https://httpbin.org/gzip") [] ()
   putStrLn "response header received"
   printLn response
-  Right content <- runEitherT $ toList_ content
-  | Left err => close client *> printLn err
+  content <- toList_ content
   putStrLn $ maybe "Nothing" id $ utf8_pack $ content
   close client
 
-test_json_deflate : IO ()
-test_json_deflate = do
-  client <- new_client_default
+export
+test_json_deflate : EitherT String IO ()
+test_json_deflate = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request"
-  Right (response, content) <- runEitherT {e=HttpError (),m=IO} $ request client GET (url' "https://httpbin.org/deflate") [] ()
-  | Left err => close client *> printLn err
+  (response, content) <- request client GET (url' "https://httpbin.org/deflate") [] ()
   putStrLn "response header received"
   printLn response
-  Right content <- runEitherT $ toList_ content
-  | Left err => close client *> printLn err
+  content <- toList_ content
   putStrLn $ maybe "Nothing" id $ utf8_pack $ content
   close client

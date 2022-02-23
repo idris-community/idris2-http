@@ -1,3 +1,5 @@
+-- Some tests to see if it would run into race conditions
+
 module QueueTest
 
 import Utils.Queue
