@@ -8,7 +8,6 @@ import Network.HTTP.Header
 import Network.HTTP.URL
 import Network.HTTP.Pool.Worker
 import Network.HTTP.Pool.Common
-import Network.HTTP.Certificate
 import Network.TLS
 import Network.TLS.Signature
 import Network.TLS.Verify
@@ -54,15 +53,10 @@ Show (Worker e) where
   show worker = "Worker: \{show worker.protocol} \{show worker.uuid}"
 
 export
-new_pool_manager' : HasIO io => Nat -> Nat -> (String -> CertificateCheck IO) -> io (PoolManager e)
-new_pool_manager' max_per_site_connections max_total_connections cert_check = liftIO $ do
+new_pool_manager : HasIO io => Nat -> Nat -> (String -> CertificateCheck IO) -> io (PoolManager e)
+new_pool_manager max_per_site_connections max_total_connections cert_check = liftIO $ do
   ref <- newIORef []
   pure (MkPoolManager ref max_per_site_connections max_total_connections cert_check)
-
-export
-new_pool_manager : HasIO io => Bool -> io (PoolManager e)
-new_pool_manager True = new_pool_manager' 5 25 (certificate_check certificates) 
-new_pool_manager False = new_pool_manager' 5 25 (certificate_ignore_check) 
 
 pool_new_worker_id : Pool e -> IO Bits64
 pool_new_worker_id pool = do

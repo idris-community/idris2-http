@@ -1,47 +1,18 @@
 package http-test
--- version =
+
 authors = "octeep"
--- maintainers =
--- license =
--- brief =
--- readme =
--- homepage =
--- sourceloc =
--- bugtracker =
 
--- the Idris2 version required (e.g. langversion >= 0.5.1)
--- langversion
-
--- packages to add to search path
--- depends =
-
--- modules to install
 modules = ClientTest, DecompressionTest, QueueTest
 
--- main file (i.e. file to load at REPL)
--- main =
+depends = base      >= 0.5.1
+        , contrib   >= 0.5.1
+        , network   >= 0.5.1
+        , sop       >= 0.5.0
+        , elab-util >= 0.5.0
+        , tls       >= 0.0.1
+        , http      >= 0.0.1
 
--- name of executable
--- executable =
--- opts =
+main = Test
+executable = runtests
+
 sourcedir = "src"
--- builddir =
--- outputdir =
-
--- script to run before building
--- prebuild =
-
--- script to run after building
--- postbuild =
-
--- script to run after building, before installing
--- preinstall =
-
--- script to run after installing
--- postinstall =
-
--- script to run before cleaning
--- preclean =
-
--- script to run after cleaning
--- postclean =

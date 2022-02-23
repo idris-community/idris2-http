@@ -56,7 +56,7 @@ new_client : HasIO io => (String -> CertificateCheck IO) ->
              {auto 0 lte : LTE max_per_site_connection max_total_connection} ->
              Bool -> Bool -> io (HttpClient e)
 new_client cert_checker max_total_connection max_per_site_connection store_cookie follow_redirect = do
-  manager <- new_pool_manager' max_per_site_connection max_total_connection cert_checker
+  manager <- new_pool_manager max_per_site_connection max_total_connection cert_checker
   jar <- newIORef $ MkCookieJar []
   pure $ MkHttpClient jar store_cookie follow_redirect manager
 
