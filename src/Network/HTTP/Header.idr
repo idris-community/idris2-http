@@ -4,6 +4,7 @@ import Generics.Derive
 import Utils.Num
 import Data.Nat
 import Data.Either
+import Data.String.Extra
 import Control.Monad.Error.Either
 import Control.Monad.Trans
 import Network.HTTP.URL
