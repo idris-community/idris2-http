@@ -1,6 +1,5 @@
 module Network.HTTP.Header
 
-import Generics.Derive
 import Utils.Num
 import Data.Nat
 import Data.Either
@@ -10,6 +9,12 @@ import Control.Monad.Trans
 import Network.HTTP.URL
 import Network.HTTP.Cookie
 import Utils.String
+import Generics.Derive
+import Derive.Prelude
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
+%hide Generics.Derive.Show
 
 %language ElabReflection
 

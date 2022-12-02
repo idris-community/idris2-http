@@ -1,7 +1,7 @@
 module Network.HTTP.URL
 
 import Data.String.Parser
-import Generics.Derive
+import Derive.Prelude
 import Network.HTTP.Protocol
 import Data.String
 import Network.HTTP.Path
@@ -30,9 +30,9 @@ record URL where
   path : Path
   extensions : String
 
-%runElab derive "URLCredential" [Generic, Meta, Eq, Show]
-%runElab derive "Hostname" [Generic, Meta, Eq, Show]
-%runElab derive "URL" [Generic, Meta, Show]
+%runElab derive "URLCredential" [Eq, Show]
+%runElab derive "Hostname" [Eq, Show]
+%runElab derive "URL" [Show]
 
 parse_port_number : Parser Bits16
 parse_port_number = do

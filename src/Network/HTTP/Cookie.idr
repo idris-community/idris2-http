@@ -3,7 +3,7 @@ module Network.HTTP.Cookie
 import Utils.String
 import Data.String.Extra
 import Data.String
-import Generics.Derive
+import Derive.Prelude
 
 %language ElabReflection
 
@@ -19,8 +19,8 @@ record CookieJar where
   constructor MkCookieJar
   cookies : List Cookie
 
-%runElab derive "Cookie" [Generic, Meta, Eq, Ord, Show]
-%runElab derive "CookieJar" [Generic, Meta, Eq, Ord, Show]
+%runElab derive "Cookie" [Eq, Ord, Show]
+%runElab derive "CookieJar" [Eq, Ord, Show]
 
 export
 serialize_cookie_no_attr : Cookie -> String

@@ -3,7 +3,7 @@
 module Network.HTTP.Status
 
 import Data.Nat
-import Generics.Derive
+import Derive.Prelude
 
 %language ElabReflection
 
@@ -31,7 +31,7 @@ data StatusCodeClass : Type where
   ClientError : StatusCodeClass
   ServerError : StatusCodeClass
 
-%runElab derive "StatusCodeClass" [Generic, Meta, Eq, Show]
+%runElab derive "StatusCodeClass" [Eq, Show]
 
 public export
 data StatusCode : Nat -> Type where
