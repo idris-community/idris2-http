@@ -1,6 +1,6 @@
 module Network.HTTP.Error
 
-import Generics.Derive
+import Derive.Prelude
 
 %language ElabReflection
 
@@ -16,4 +16,4 @@ data HttpError e
   | DecompressionError String
   | OtherReason e
 
-%runElab derive "HttpError" [Generic, Meta, Eq, Show]
+%runElab derive "HttpError" [Eq, Show]

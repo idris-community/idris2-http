@@ -2,7 +2,7 @@ module Network.HTTP.Message
 
 import Data.String.Parser
 import Data.String.Extra
-import Generics.Derive
+import Derive.Prelude
 import Network.HTTP.Header
 import Network.HTTP.Status
 import Network.HTTP.Method
@@ -25,12 +25,22 @@ record RawHttpMessage where
 public export
 record HttpResponse where
   constructor MkHttpResponse
-  status_code : (n ** StatusCode n)
+  -- stefan-hoeck: The deriving mechanism from elab-util does
+  --               not (yet?) support lambdas in argument types
+  --               because this would force us to keep track of
+  --               variable scope when determining the parameters of
+  --               a type.
+  --
+  --               There are two ways to work around this:
+  --                 a) Use the `DPair` syntax instead of the `**` sugar
+  --                 b) derive `Show` via the `deriveShow` macro, which
+  --                    is slightly more verbose, but also more forgiving.
+  status_code : DPair Nat StatusCode
   status_name : String
   headers : RawHeaders
 
-%runElab derive "RawHttpMessage" [Generic, Meta, Show]
-%runElab derive "HttpResponse" [Generic, Meta, Show]
+%runElab derive "RawHttpMessage" [Show]
+%runElab derive "HttpResponse" [Show]
 
 export
 serialize_http_message : RawHttpMessage -> String
