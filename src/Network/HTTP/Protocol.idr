@@ -2,6 +2,11 @@ module Network.HTTP.Protocol
 
 import Data.String
 import Generics.Derive
+import Derive.Prelude
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
+%hide Generics.Derive.Show
 
 %language ElabReflection
 

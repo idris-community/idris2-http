@@ -4,7 +4,7 @@ import Data.String
 import Data.String.Extra
 import Data.List1
 import Data.List
-import Generics.Derive
+import Derive.Prelude
 
 %language ElabReflection
 
@@ -15,7 +15,7 @@ data PathComponent : Type where
   End : PathComponent
   Named : String -> PathComponent
 
-%runElab derive "PathComponent" [Generic, Meta, Eq]
+%runElab derive "PathComponent" [Eq]
 
 export
 record Path where

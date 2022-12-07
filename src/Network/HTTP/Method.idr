@@ -1,6 +1,11 @@
 module Network.HTTP.Method
 
 import Generics.Derive
+import Derive.Prelude
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
+%hide Generics.Derive.Show
 
 %language ElabReflection
 
