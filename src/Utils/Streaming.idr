@@ -80,6 +80,7 @@ public export
 
 mutual
   public export
+  covering
   (Functor f, Monad m) => Applicative (Stream f m) where
     pure = Return
     x <*> y = do
@@ -88,8 +89,11 @@ mutual
       pure (f v)
 
   public export
+  covering
     (Functor f, Monad m) => Monad (Stream f m) where
-      x >>= k = assert_total Build (\return, effect, step => fold (fold return effect step . k) effect step x)
+      x >>= k = assert_total Build 
+        (\return, effect, step => 
+          fold (fold return effect step . k) effect step x)
 
 public export
 MonadTrans (Stream f) where
