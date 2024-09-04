@@ -17,8 +17,8 @@ export
 take_last : Nat -> FiniteBuffer a -> Maybe (List a)
 take_last n fb = guard (cast n <= fb.size) $> (toList $ take n $ drop (cast (fb.size - cast n)) fb.buffer)
 
-infixr 5 +<
-infixr 5 +<><
+export infixr 5 +<
+export infixr 5 +<><
 
 export
 (+<) : FiniteBuffer a -> a -> FiniteBuffer a
