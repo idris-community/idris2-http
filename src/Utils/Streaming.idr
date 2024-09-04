@@ -9,7 +9,7 @@ import Control.Monad.Trans
 import Data.List
 import Data.Nat
 
-infixl 0 :>
+export infixl 0 :>
 
 public export
 data Of : (a : Type) -> (b : Type) -> Type where
