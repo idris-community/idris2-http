@@ -2,9 +2,16 @@
 type = "local"
 path = "."
 ipkg = "http.ipkg"
-test = "test/test.ipkg"
+test = "tests/http-test.ipkg"
+
+[custom.all.tls]
+type   = "git"
+url    = "https://github.com/idris-community/idris2-tls"
+commit = "latest:master"
+ipkg   = "tls.ipkg"
+path   = "tests"
 
 [custom.all.http-test]
 type = "local"
-path = "test"
-ipkg = "test.ipkg"
+path = "tests"
+ipkg = "http-test.ipkg"
