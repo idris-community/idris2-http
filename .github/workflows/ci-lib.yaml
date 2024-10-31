@@ -1,0 +1,28 @@
+name: Build
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+env:
+  SCHEME: scheme
+jobs:
+  ubuntu-chez:
+    runs-on: ubuntu-latest
+    env:
+      PACK_DIR: /root/.pack
+    strategy:
+      fail-fast: false
+    container: ghcr.io/stefan-hoeck/idris2-pack:latest
+    steps:
+      - name: Checkout idris2-http
+        uses: actions/checkout@v2
+
+      - name: Build package
+        run: pack --no-prompt install http
+
+      - name: Test package
+        run: pack --no-prompt run http-test

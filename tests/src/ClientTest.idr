@@ -87,6 +87,7 @@ test_close_without_read : EitherT String IO ()
 test_close_without_read = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request"
   (response, content) <- request client GET (url' "http://openbsd.org/70.html") [] ()
+  --_ <- toList_ content -- required to pass tests
   putStrLn "response header received"
   printLn response
 
@@ -106,6 +107,17 @@ test_json_deflate : EitherT String IO ()
 test_json_deflate = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request"
   (response, content) <- request client GET (url' "https://httpbin.org/deflate") [] ()
+  putStrLn "response header received"
+  printLn response
+  content <- toList_ content
+  putStrLn $ maybe "Nothing" id $ utf8_pack $ content
+  close client
+
+export
+test_chunked_transfer_encoding : EitherT String IO () 
+test_chunked_transfer_encoding = map_error show $ with_client {e=()} new_client_default $ \client => do
+  putStrLn "sending request stream"
+  (response, content) <- request client GET (url' "https://httpbin.org/stream/2") [] ()
   putStrLn "response header received"
   printLn response
   content <- toList_ content
