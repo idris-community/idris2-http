@@ -2,9 +2,9 @@
 type = "local"
 path = "."
 ipkg = "http.ipkg"
-test = "test/test.ipkg"
+test = "tests/http-test.ipkg"
 
 [custom.all.http-test]
 type = "local"
-path = "test"
-ipkg = "test.ipkg"
+path = "tests"
+ipkg = "http-test.ipkg"
