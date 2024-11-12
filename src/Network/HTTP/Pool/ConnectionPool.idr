@@ -105,7 +105,7 @@ close_pool cond pool = do
 
   -- close all sockets
   workers <- readIORef pool.workers
-  traverse_ (close . socket) workers
+  traverse_ close_worker workers
 
   -- broadcast kill event
   broadcast queue (Kill $ Just cond)

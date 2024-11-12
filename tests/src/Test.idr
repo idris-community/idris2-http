@@ -30,7 +30,7 @@ main = run
   , run_test "decompress jabberwock.txt.gz" test_gzip_text
   , run_test "decompress jabberwocky.jpg.gz" test_gzip_jpg
   , run_test "decompress concatenated.gz" test_gzip_concated
-  --, run_test "http close w/out read" test_close_without_read
+  , run_test "http close w/out read" test_close_without_read
   , run_test "http cookie jar" test_cookie
   , run_test "http httpbin deflate" test_json_deflate
   , run_test "http httpbin gzip" test_json_gzip
