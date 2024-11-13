@@ -117,9 +117,11 @@ export
 test_chunked_transfer_encoding : EitherT String IO () 
 test_chunked_transfer_encoding = map_error show $ with_client {e=()} new_client_default $ \client => do
   putStrLn "sending request stream"
-  (response, content) <- request client GET (url' "https://httpbin.org/stream/2") [] ()
+  (response, content) <- request client GET (url' "https://httpbin.org/stream/3") [] ()
   putStrLn "response header received"
   printLn response
-  content <- toList_ content
-  putStrLn $ maybe "Nothing" id $ utf8_pack $ content
+  -- (content, _) <- toList content
+  -- putStrLn "println content"
+  -- printLn $ utf8_pack $ content
+  putStrLn "closing client"
   close client

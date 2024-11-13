@@ -91,10 +91,13 @@ total_active_connections protocol manager = do
 
 close_worker : Worker e -> IO ()
 close_worker worker = do
-  -- putStrLn "closing \{show worker}"
+  putStrLn "closing \{show worker}"
   close worker.socket
+  putStrLn "Closed worker.socket"
   let f = \w => w.uuid /= worker.uuid
-  modifyIORef worker.parent.workers (filter f)
+  res <- modifyIORef worker.parent.workers (filter f)
+  putStrLn "Modified io ref"
+  pure res
 
 close_pool : {e : _} -> Condition -> Pool e -> IO ()
 close_pool cond pool = do
@@ -104,17 +107,19 @@ close_pool cond pool = do
   traverse_ (flip channelPut (Left ConnectionClosed) . response) remaining
 
   -- close all sockets
+  putStrLn ("Traversing close_worker")
   workers <- readIORef pool.workers
   traverse_ close_worker workers
 
   -- broadcast kill event
+  putStrLn ("Broadcasting kill \{show workers}")
   broadcast queue (Kill $ Just cond)
 
 wait_for_worker_close : {e : _} -> Mutex -> Condition -> List (Pool e) -> IO ()
 wait_for_worker_close mutex cond pools = do
   conditionWaitTimeout cond mutex 1000000
   workers <- traverse (\p => readIORef p.workers) pools
-  -- putStrLn "waiting for pool close: \{show workers}"
+  putStrLn "waiting for pool close: \{show workers}"
   if null (join workers) then pure () else wait_for_worker_close mutex cond pools
 
 has_idle_worker : Pool e -> IO Bool
@@ -144,6 +149,7 @@ spawn_worker fetcher throw cert_check protocol hostname pool = do
   0 <- connect sock (Hostname hostname.domain) (cast port)
   | err => throw $ SocketError "unable to connect to \{hostname_str}: \{show err}"
   let closer = close_worker worker
+  putStrLn "Running worker_handle"
   worker_handle sock idle_ref closer fetcher throw cert_check protocol hostname_str
 
 min_by : (ty -> ty -> Ordering) -> List1 ty -> ty
@@ -197,6 +203,7 @@ export
       pure ()
 
   evict_all manager = do
+    putStrLn "Evict all"
     pools <- readIORef manager.pools
     condition <- makeCondition
     mutex <- makeMutex

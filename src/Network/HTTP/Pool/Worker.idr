@@ -54,9 +54,11 @@ worker_write handle remaining stream = do
   worker_write handle (remaining - should_take) rest
 
 worker_finish : Maybe ConnectionAction -> (1 _ : Handle' t_ok t_closed) -> L1 IO (LogicOkOrError t_ok t_closed)
-worker_finish (Just KeepAlive) handle =
+worker_finish (Just KeepAlive) handle = do
+  putStrLn "Keeping alive"
   pure1 (True # handle)
 worker_finish _ handle = do
+  putStrLn "Closing handle"
   handle <- close handle
   pure1 (False # handle)
 
@@ -154,12 +156,15 @@ worker_logic request handle = do
     liftIO1 $ throw (SocketError "error while reading response header: \{error}")
     pure1 (False # handle)
 
+  putStrLn "Hello you"
+
   let Right response = deserialize_http_response $ (ltrim line <+> "\n") -- for some reason the end line sometimes is not sent
   | Left err => do
     handle <- close handle
     liftIO1 $ throw (SocketError "error parsing http response headers: \{err}")
     pure1 (False # handle)
   let connection_action = lookup_header response.headers Connection
+  putStrLn "Hello you"
 
   channel <- liftIO1 (makeChannel {a=(Either (HttpError e) (Maybe (List Bits8)))})
   let schedule_response = MkScheduleResponse response channel
@@ -168,10 +173,15 @@ worker_logic request handle = do
   let encodings = join $ toList (forget <$> lookup_header response.headers TransferEncoding)
   if elem Chunked encodings
     then do
+      putStrLn "Chunked"
       (True # handle) <- worker_read_chunked handle channel
       | (False # handle) => pure1 (False # handle)
-      worker_finish connection_action handle
+      putStrLn "Chunked finished"
+      res <- worker_finish connection_action handle
+      putStrLn "worker_finish finished"
+      pure1 res
     else do
+      putStrLn "Non chunked"
       let Just content_length = lookup_header response.headers ContentLength
       | Nothing => do
         handle <- close handle
@@ -183,9 +193,11 @@ worker_logic request handle = do
 
 worker_loop : {e : _} -> IORef Bool -> IO () -> Queue (Event e) -> (1 _ : Handle' t_ok ()) -> L IO ()
 worker_loop idle_ref closer queue handle = do
+  putStrLn "worker_loop"
   liftIO1 $ writeIORef idle_ref True
   Request request <- liftIO1 $ recv queue
   | Kill condition => do
+    putStrLn "Received kill"
     close handle
     liftIO1 closer
     case condition of
@@ -202,9 +214,11 @@ worker_handle : {e : _} -> Socket -> IORef Bool -> IO () -> Queue (Event e) -> (
 worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostname = LIO.run $ do
   let handle = socket_to_handle socket
   case protocol of
-    HTTP =>
+    HTTP => do
+      putStrLn "worker_handle::HTTP"
       worker_loop idle_ref closer fetcher handle
     HTTPS => do
+      putStrLn "worker_handle::HTTPS"
       (True # handle) <-
         tls_handshake hostname
           (X25519 ::: [SECP256r1, SECP384r1])
@@ -213,4 +227,5 @@ worker_handle socket idle_ref closer fetcher throw cert_checker protocol hostnam
           handle
           (cert_checker hostname)
       | (False # (err # ())) => liftIO1 $ throw $ SocketError "error during TLS handshake: \{err}"
+      putStrLn "worker_handle :: running worker_loop"
       worker_loop idle_ref closer fetcher handle
