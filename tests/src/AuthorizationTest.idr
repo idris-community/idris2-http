@@ -2,6 +2,7 @@ module AuthorizationTest
 
 import Network.HTTP
 import Control.Monad.Error.Either
+import Data.String
 import Data.String.Base64
 
 %default partial
@@ -12,7 +13,7 @@ test_base64_encoding_decoding =
   let user           = "aladdin"
       passwd         = "opensesame"
       (_, basicauth) = applyBasicAuth user passwd
-      basicauth'     = base64DecodeString basicauth
+      basicauth'     = base64DecodeString $ snd $ break ((==) ' ') basicauth
     in case basicauth' of
          Nothing          =>
            idris_crash "couldn't base64 decode string."
