@@ -23,6 +23,7 @@ data Header
   = Host
   | ContentType
   | Accept
+  | Authorization
   | Cookie
   | SetCookie
   | ContentLength
@@ -49,9 +50,15 @@ data ContentEncodingScheme : Type where
   GZip : ContentEncodingScheme
   Deflate : ContentEncodingScheme
 
+public export
+data AuthorizationScheme : Type where
+  BasicAuthorization  : (credentials : String) -> AuthorizationScheme
+  BearerAuthorization : (token : String)       -> AuthorizationScheme
+
 %runElab derive "ConnectionAction" [Generic, Meta, Eq, DecEq, Ord, Show]
 %runElab derive "TransferEncodingScheme" [Generic, Meta, Eq, DecEq, Ord, Show]
 %runElab derive "ContentEncodingScheme" [Generic, Meta, Eq, DecEq, Ord, Show]
+%runElab derive "AuthorizationScheme" [Generic, Meta, Eq, DecEq, Ord, Show]
 
 public export
 header_value_type : Header -> Type
@@ -62,6 +69,7 @@ header_value_type Connection = ConnectionAction
 header_value_type TransferEncoding = List1 TransferEncodingScheme
 header_value_type ContentEncoding = List1 ContentEncodingScheme
 header_value_type SetCookie = Cookie
+header_value_type Authorization = AuthorizationScheme 
 header_value_type _ = String
 
 export
@@ -71,6 +79,7 @@ header_key_name ContentLength = "Content-Length"
 header_key_name TransferEncoding = "Transfer-Encoding"
 header_key_name ContentEncoding = "Content-Encoding"
 header_key_name SetCookie = "Set-Cookie"
+header_key_name Authorization = "Authorization"
 header_key_name (Unknown x) = x
 header_key_name x = show x
 
@@ -81,6 +90,7 @@ key_name_to_header x =
     "host" => Host
     "content-type" => ContentType
     "accept" => Accept
+    "authorization" => Authorization
     "cookie" => Cookie
     "content-length" => ContentLength
     "connection" => Connection
@@ -98,6 +108,13 @@ header_parse_value : (header : Header) -> (String -> Maybe (header_value_type he
 header_parse_value Host = getRight . parse_hostname
 header_parse_value ContentType = Just
 header_parse_value Accept = Just
+header_parse_value Authorization = parse_authorization_encoding . break (' ' ==) . trim where
+  parse_authorization_encoding : (String, String) -> Maybe AuthorizationScheme
+  parse_authorization_encoding (x, y) =
+    case toLower $ trim x of
+      "basic"  => Just (BasicAuthorization $ trim y)
+      "bearer" => Just (BearerAuthorization $ trim y)
+      _        => Nothing
 header_parse_value Location = Just
 header_parse_value ContentLength = stringToNat' 10
 header_parse_value (Unknown x) = Just
@@ -124,6 +141,7 @@ header_write_value : (header : Header) -> (header_value_type header -> String)
 header_write_value Host = hostname_string
 header_write_value ContentType = id
 header_write_value Accept = id
+header_write_value Authorization = \case (BasicAuthorization creds) => "Basic " ++ creds; (BearerAuthorization token) => "Bearer " ++ token
 header_write_value Location = id
 header_write_value Cookie = join "; " . map (\(a,b) => "\{a}=\{b}")
 header_write_value ContentLength = show

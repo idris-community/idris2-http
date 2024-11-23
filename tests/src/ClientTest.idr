@@ -123,3 +123,15 @@ test_chunked_transfer_encoding = map_error show $ with_client {e=()} new_client_
   content <- toList_ content
   putStrLn $ maybe "Nothing" id $ utf8_pack $ content
   close client
+
+export
+test_bearer_authorization : EitherT String IO ()
+test_bearer_authorization = map_error show $ with_client {e=()} new_client_default $ \client => do
+  let token     = "YWxhZGRpbjpvcGVuc2VzYW1l"
+      bearerauth = applyBearerAuth token
+  (response, content) <- request client GET (url' "https://httpbin.org/bearer") [bearerauth] ()
+  putStrLn "response header received"
+  printLn response
+  content <- toList_ content
+  putStrLn $ maybe "Nothing" id $ utf8_pack $ content
+  close client

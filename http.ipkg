@@ -8,6 +8,7 @@ license = "ISC (refer to LICENSE file)"
 brief = "A http client implementation in idris2"
 
 depends = base      >= 0.5.1
+        , base64
         , contrib   >= 0.5.1
         , network   >= 0.5.1
         , sop       >= 0.5.0
@@ -25,6 +26,7 @@ modules = Data.Compress.CRC,
           Data.Compress.Utils.Parser,
           Data.Compress.Interface,
           Data.Compress.ZLib,
+          Network.HTTP.Authorization,
           Network.HTTP.Header,
           Network.HTTP.Status,
           Network.HTTP.Method,

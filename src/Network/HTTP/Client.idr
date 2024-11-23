@@ -155,7 +155,6 @@ export
 Bytestream String where
   to_stream = to_stream . utf8_unpack
 
-
 ||| Send a HTTP request, returns a `HttpResponse` containing the status code and headers,
 ||| and also a stream of the content body from the response.
 ||| Arguments:
