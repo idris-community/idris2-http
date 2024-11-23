@@ -11,26 +11,23 @@ import Utils.String
 
 export
 test_base64_encoding_decoding : EitherT String IO ()
-test_base64_encoding_decoding =
-  let user           = "aladdin"
-      passwd         = "opensesame"
-      (_, basicauth) = applyBasicAuth user passwd
-      basicauth'     = base64DecodeString $ last $ split ((==) ' ') basicauth
-    in case basicauth' of
-      Nothing =>
-        idris_crash "couldn't base64 decode string."
-      Just basicauth'' =>
-        case utf8_pack basicauth'' of
-          Nothing =>
-            idris_crash "couldn't utf8 pack decoded string."
-          Just basicauth''' =>
-            let userpasswd = split ((==) ':') basicauth'''
-                user'      = head userpasswd
-                passwd'    = last userpasswd
-              in case basicauth == "Basic YWxhZGRpbjpvcGVuc2VzYW1l" &&
-                      user      == user'                            &&
-                      passwd    == passwd' of
-                True  =>
-                  pure ()
-                False =>
-                  throwE "base64 encode/decode error: expected \{user} and \{user'}, \{passwd} and \{passwd'} to be equivalent."
+test_base64_encoding_decoding = do
+  let user = "aladdin"
+  let passwd = "opensesame"
+  let (_, basicauth) = applyBasicAuth user passwd
+  
+  basicauth' <- maybe (throwE "Couldn't base64 decode string.") pure $
+                base64DecodeString $ last $ split ((==) ' ') basicauth
+  
+  basicauth'' <- maybe (throwE "Couldn't utf8 pack decoded string.") pure $
+                  utf8_pack basicauth'
+
+  let userpasswd = split ((==) ':') basicauth''
+  let user' = head userpasswd
+  let passwd' = last userpasswd
+
+  if basicauth == "Basic YWxhZGRpbjpvcGVuc2VzYW1l" &&
+     user == user' &&
+     passwd == passwd'
+    then pure ()
+    else throwE $ "Base64 encode/decode error: expected {user} and {user'}, {passwd} and {passwd'} to be equivalent."
