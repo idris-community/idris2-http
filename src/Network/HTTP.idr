@@ -1,5 +1,6 @@
 module Network.HTTP
 
+import public Network.HTTP.Authorization
 import public Network.HTTP.Protocol
 import public Network.HTTP.Message
 import public Network.HTTP.Error
