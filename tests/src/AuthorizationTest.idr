@@ -16,17 +16,17 @@ test_base64_encoding_decoding =
       (_, basicauth) = applyBasicAuth user passwd
       basicauth'     = base64DecodeString $ last $ split ((==) ' ') basicauth
     in case basicauth' of
-     Nothing          =>
-       idris_crash "couldn't base64 decode string."
-     Just basicauth'' =>
-       let basicauth''' = fastPack $ map (\x => chr $ the Int (cast x)) basicauth''
-           userpasswd = split ((==) ':') basicauth'''
-           user'      = head userpasswd
-           passwd'    = last userpasswd
-         in case basicauth == "Basic YWxhZGRpbjpvcGVuc2VzYW1l" &&
-                 user      == user'                            &&
-                 passwd    == passwd' of
-              True  =>
-                pure ()
-              False =>
-                throwE "base64 encode/decode error: expected \{user} and \{user'}, \{passwd} and \{passwd'} to be equivalent."
+      Nothing          =>
+        idris_crash "couldn't base64 decode string."
+      Just basicauth'' =>
+        let basicauth''' = fastPack $ map (\x => chr $ the Int (cast x)) basicauth''
+            userpasswd = split ((==) ':') basicauth'''
+            user'      = head userpasswd
+            passwd'    = last userpasswd
+          in case basicauth == "Basic YWxhZGRpbjpvcGVuc2VzYW1l" &&
+                  user      == user'                            &&
+                  passwd    == passwd' of
+            True  =>
+              pure ()
+            False =>
+              throwE "base64 encode/decode error: expected \{user} and \{user'}, \{passwd} and \{passwd'} to be equivalent."
