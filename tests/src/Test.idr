@@ -3,6 +3,7 @@ module Test
 import Data.List
 import System
 
+import AuthorizationTest
 import DecompressionTest
 import ClientTest
 import Control.Monad.Error.Either
@@ -25,7 +26,9 @@ run tests = do
 export
 main : IO ()
 main = run
-  [ run_test "decompress random.bin.gz" test_gzip_uncompressed
+  [ run_test "authorization base64 encoding/decoding" test_base64_encoding_decoding
+  , run_test "authorization bearer authorization" test_bearer_authorization 
+  , run_test "decompress random.bin.gz" test_gzip_uncompressed
   , run_test "decompress hello.gz" test_gzip_fixed_huffman
   , run_test "decompress jabberwock.txt.gz" test_gzip_text
   , run_test "decompress jabberwocky.jpg.gz" test_gzip_jpg
