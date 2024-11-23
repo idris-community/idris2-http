@@ -1,6 +1,7 @@
 module Network.HTTP.Authorization
 
 import Data.String.Base64
+import Utils.String
 
 private
 buildBasicAuth :  String -- username
@@ -8,8 +9,8 @@ buildBasicAuth :  String -- username
                -> (String, String)
 buildBasicAuth user passwd =
   let userandpasswd  = user ++ ":" ++ passwd
-      userandpasswd' = map (\x => the Bits8 (cast $ ord x)) (fastUnpack userandpasswd)
-    in ("Authorization", "Basic " ++ (base64EncodeString userandpasswd'))
+      userandpasswd' = utf8_unpack userandpasswd
+    in ("Authorization", "Basic " ++ base64EncodeString userandpasswd')
 
 public export
 applyBasicAuth :  String -- username
