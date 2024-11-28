@@ -8,3 +8,7 @@ test = "tests/http-test.ipkg"
 type = "local"
 path = "tests"
 ipkg = "http-test.ipkg"
+
+[idris2]
+url="https://github.com/jarlah/Idris2-httpfix"
+commit="7b4590216c6504c3d1e4d1cbc33f3a2d86daba17"
