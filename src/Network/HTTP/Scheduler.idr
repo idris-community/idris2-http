@@ -73,7 +73,7 @@ accumulateResponse2 chan acc = do
       if null acc
         then pure $ Left $ SocketError "No data received"
         else pure $ Right (MkHttpResponse (MkDPair 200 OK) "" [], acc)
-    Just chunk => accumulateResponse chan (acc ++ [chunk])
+    Just chunk => accumulateResponse2 chan (acc ++ [chunk])
 
 
 public export
