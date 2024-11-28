@@ -10,6 +10,9 @@ import Data.List1
 import Data.Compress.Interface
 import Data.Compress.GZip
 import Data.Compress.ZLib
+import Data.String
+import System.Concurrency
+import Network.HTTP.Status
 
 public export
 record ScheduleResponse (e : Type) (m : Type -> Type) where
@@ -34,16 +37,23 @@ interface Scheduler (e : Type) (m : Type -> Type) (0 a : Type) where
 channel_to_stream : (HasIO m, Decompressor c) => c -> Channel (Either (HttpError e) (Maybe (List Bits8))) ->
                     Stream (Of Bits8) m (Either (HttpError e) ())
 channel_to_stream decomp channel = do
-  Right (Just content) <- liftIO $ channelGet channel
-  | Right Nothing =>
+  putStrLn "Asking for data"
+  result <- liftIO $ channelGet channel
+  putStrLn "Asked for data"
+  case result of
+    Right (Just content) => do
+      putStrLn $ "got " ++ show content
+      let Right (decompressed, newDecomp) = feed decomp content
+        | Left err => pure (Left $ DecompressionError err)
+      fromList_ decompressed *> channel_to_stream newDecomp channel
+    Right Nothing => do
+      putStrLn "Got nothing"
       case done decomp of
         Right [] => pure (Right ())
         Right xs => pure (Left $ DecompressionError "\{show $ length xs} leftover bytes in decompression buffer")
         Left err => pure (Left $ DecompressionError err)
-  | Left err => pure (Left err)
-  let Right (content, decomp) = feed decomp content
-  | Left err => pure (Left $ DecompressionError err)
-  fromList_ content *> channel_to_stream decomp channel
+    Left err => pure (Left err)
+
 
 decompressor : List ContentEncodingScheme -> DPair Type Decompressor
 decompressor [ GZip ] = MkDPair GZipState %search
@@ -53,6 +63,18 @@ decompressor _ = MkDPair IdentityState %search
 to_list : Maybe (List1 a) -> List a
 to_list Nothing = []
 to_list (Just (x ::: xs)) = x :: xs
+
+
+accumulateResponse2 : (HasIO m, Scheme a) => Channel a -> List a -> m (Either (HttpError e) (HttpResponse, List a))
+accumulateResponse2 chan acc = do
+  maybeChunk <- channelGetNonBlocking chan
+  case maybeChunk of
+    Nothing => 
+      if null acc
+        then pure $ Left $ SocketError "No data received"
+        else pure $ Right (MkHttpResponse (MkDPair 200 OK) "" [], acc)
+    Just chunk => accumulateResponse2 chan (acc ++ [chunk])
+
 
 public export
 start_request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
@@ -64,7 +86,14 @@ start_request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
 start_request scheduler protocol msg content = do
   mvar <- makeChannel
   schedule_request scheduler protocol $ MkScheduleRequest msg content mvar
-  Right response <- channelGet mvar
-  | Left err => pure $ Left err
-  let (encoding ** wit) = decompressor $ to_list $ lookup_header response.raw_http_response.headers ContentEncoding
-  pure $ Right (response.raw_http_response, channel_to_stream (init @{wit}) response.content)
+  result <- accumulateResponse2 mvar []
+  case result of
+    Left err => pure $ Left err
+    Right (response, accumulatedContent) =>
+      let (encoding ** wit) = decompressor $ to_list $ lookup_header response.headers ContentEncoding
+      in pure $ Right (response, channel_to_stream (init @{wit}) (streamFromList accumulatedContent))
+
+where
+  streamFromList : List a -> Stream (Of a) m (Either (HttpError e) ())
+  streamFromList [] = pure $ Right ()
+  streamFromList (x :: xs) = x `cons` streamFromList xs
