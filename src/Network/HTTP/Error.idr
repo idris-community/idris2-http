@@ -14,6 +14,7 @@ data HttpError e
   | MissingHeader String
   | UnknownTransferEncoding String
   | DecompressionError String
+  | TimedOutError String
   | OtherReason e
 
 %runElab derive "HttpError" [Eq, Show]

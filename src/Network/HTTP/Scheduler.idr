@@ -65,17 +65,6 @@ to_list Nothing = []
 to_list (Just (x ::: xs)) = x :: xs
 
 
-accumulateResponse2 : (HasIO m, Scheme a) => Channel a -> List a -> m (Either (HttpError e) (HttpResponse, List a))
-accumulateResponse2 chan acc = do
-  maybeChunk <- channelGetNonBlocking chan
-  case maybeChunk of
-    Nothing => 
-      if null acc
-        then pure $ Left $ SocketError "No data received"
-        else pure $ Right (MkHttpResponse (MkDPair 200 OK) "" [], acc)
-    Just chunk => accumulateResponse2 chan (acc ++ [chunk])
-
-
 public export
 start_request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
           scheduler ->
@@ -86,14 +75,9 @@ start_request : {m, e : _} -> (HasIO m, Scheduler e m scheduler) =>
 start_request scheduler protocol msg content = do
   mvar <- makeChannel
   schedule_request scheduler protocol $ MkScheduleRequest msg content mvar
-  result <- accumulateResponse2 mvar []
-  case result of
-    Left err => pure $ Left err
-    Right (response, accumulatedContent) =>
-      let (encoding ** wit) = decompressor $ to_list $ lookup_header response.headers ContentEncoding
-      in pure $ Right (response, channel_to_stream (init @{wit}) (streamFromList accumulatedContent))
-
-where
-  streamFromList : List a -> Stream (Of a) m (Either (HttpError e) ())
-  streamFromList [] = pure $ Right ()
-  streamFromList (x :: xs) = x `cons` streamFromList xs
+  Just res <- channelGetWithTimeout mvar 1000
+  | Nothing => pure $ Left TimedOutError "Timed out while getting response"
+  Right response <- res
+  | Left err => pure $ Left err
+  let (encoding ** wit) = decompressor $ to_list $ lookup_header response.raw_http_response.headers ContentEncoding
+  pure $ Right (response.raw_http_response, channel_to_stream (init @{wit}) response.content)
